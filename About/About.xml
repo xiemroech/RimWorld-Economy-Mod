@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>内部经济重制：国家与革命</name>
+  <author>xiemore</author>
+  <packageId>xiemore.internal.economy</packageId>
+  <description>殖民地内部经济系统：物价、工资、税收、私产、市场与补货。
+
+【价格与生产】
+· 物品自动归类，统一价格管道：社会化 0%=盈利价 / 50%=原版价 / 100%=免费
+· 价格由劳动价值推导（原料成本 + 工时价值），并随库存稀缺与通胀浮动
+· 本地银价指数：国库与私银越多，物价越高
+· 产银链：银矿场 → 未制成银 → 银加工台 → 白银
+
+【个人与分配】
+· 物品私有标签：货物/衣物/武器可划给某个小人，被征用会掉心情
+· 实物白银：工资按劳动量结算，拆成银币直接进小人背包
+· 工资参数可按人单独设置（劳动日价值、比例、日薪上限、标准工时、加班倍率）
+· 奖金：按劳动量排名分组发放，末位扣满意度
+· 税收：累退 / 比例 / 累进三档，含人头税
+· 医疗：按医生医疗等级收诊疗费；治疗用掉的医药按当前价格另算，一起从病人私银扣，付不起扣满意度
+
+【产权与消费】
+· 存储区与储物建筑可指定主人，搬运逻辑遵守归属
+· 私有仓库只能收物主自己的东西，私有食物别人不能吃
+· 居民自行消费：食物按恩格尔系数挑档次，钱不够会扣满意度
+· 市场摊位：容量 100 组，居民优先在市场购物，走到手才结算货款
+
+【外部贸易】
+· 边际计价：卖出超过「商人白银 × 50%」的部分逐段打折（默认 ×0.5），越卖越贱，理论上最多换走他全部现金
+· 买入超过「商人货值 × 5%」的部分逐段加价（默认 ×2），越买越贵，所以能买空但要付溢价
+· 装了 RimChat 时，它的「物资空投」预期价格也按同一套边际公式计算
+· 交易时右下角小窗实时显示涨价线、已成交与待成交金额、当前买卖乘数
+
+【仓库运输】
+· 每个存储建筑都有「补货设置」按钮
+· 默认：把仓库允许的物品补满空格
+· 细化：按物品设下限/上限，可保存成预设重复套用
+
+【折旧与维修】
+· 生产建筑（工作台）会随机故障，平均 20 天一次，可用「经济」界面或沙盒调节
+· 故障的工作台停止生产，小人会自动搬材料来修（按原版维修流程：搬到材料 → 进度条 → 成功率判定）
+· 建造配方含零部件的消耗 1 个该零部件；不含零部件的按建造花费的 10% 消耗原材料（同材质合并）
+· 不采用耐久损耗，也不会走原版「一个零部件免费修好」的捷径
+
+【工作满意度】
+· 由报酬公平、工时、工作条件、宿舍、健康、贫富差距、事件综合决定，影响真实工作速度
+· 过低会触发罢工 / 暴动 / 革命
+· 情绪传播：满意度低于 50 的人每小时按概率把负面情绪传给身边一人（同时掉心情与工作满意度，持续 3 天）
+· 富人免疫情绪传播（私有财富 ≥ 人均 2 倍且 ≥ 200 银）
+
+可选内容全部可在「经济」界面或模组设置里关闭。
+
+【互斥说明】本 mod 的仓库补货与 Storage Refill Hysteresis 功能重叠，
+已在 mod 层面互斥：两者不能同时启用。
+
+物品归属不写死名单：任何 mod 只要给 ThingDef 加 EconomyItemExtension，
+或新建 EconomyCategoryDef，即可接入。</description>
+  <supportedVersions>
+    <li>1.7</li>
+  </supportedVersions>
+  <modDependencies>
+    <li>
+      <packageId>brrainz.harmony</packageId>
+      <displayName>Harmony</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
+    </li>
+  </modDependencies>
+  <incompatibleWith>
+    <li>puremj.mjrimmods.storagerefillhysteresis</li>
+  </incompatibleWith>
+  <loadAfter>
+    <li>brrainz.harmony</li>
+    <li>jaxe.rimhud</li>
+    <li>adaptive.storage.framework</li>
+  </loadAfter>
+</ModMetaData>
