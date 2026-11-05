@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <NeedDef>
+    <defName>DshEco_Satisfaction</defName>
+    <needClass>DshEconomy.Need_Satisfaction</needClass>
+    <label>工作满意度</label>
+    <description>由报酬公平、工作条件与制度稳定性决定的综合满意度。影响真实工作速度。</description>
+    <showOnNeedList>true</showOnNeedList>
+    <baseLevel>0.5</baseLevel>
+    <major>false</major>
+    <listPriority>90</listPriority>
+  </NeedDef>
+
+</Defs>

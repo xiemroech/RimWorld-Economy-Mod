@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <ThoughtDef>
+    <defName>DshEco_PropertyConfiscated</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <durationDays>5</durationDays>
+    <stackLimit>5</stackLimit>
+    <stages>
+      <li>
+        <label>私产被征用</label>
+        <description>我自己背包里的东西被殖民地直接收走了，连问都没问。</description>
+        <baseMoodEffect>-12</baseMoodEffect>
+      </li>
+    </stages>
+  </ThoughtDef>
+
+  <ThoughtDef>
+    <defName>DshEco_GotBonus</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <durationDays>5</durationDays>
+    <stackLimit>3</stackLimit>
+    <stages>
+      <li>
+        <label>领到了奖金</label>
+        <description>殖民地给我发了一笔奖金，干活更有劲了。</description>
+        <baseMoodEffect>8</baseMoodEffect>
+      </li>
+    </stages>
+  </ThoughtDef>
+
+  <ThoughtDef>
+    <defName>DshEco_NoBonus</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <durationDays>5</durationDays>
+    <stackLimit>3</stackLimit>
+    <stages>
+      <li>
+        <label>没拿到奖金</label>
+        <description>大家都在领奖金，偏偏没有我。待遇不公平。</description>
+        <baseMoodEffect>-6</baseMoodEffect>
+      </li>
+    </stages>
+  </ThoughtDef>
+
+</Defs>

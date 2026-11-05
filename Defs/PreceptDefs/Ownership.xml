@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <IssueDef>
+    <defName>DshEco_Ownership</defName>
+    <label>财产制度</label>
+    <iconPath>UI/Issues/DshEco_Ownership</iconPath>
+  </IssueDef>
+
+  <PreceptDef>
+    <defName>DshEco_PreceptPrivateOwnership</defName>
+    <issue>DshEco_Ownership</issue>
+    <label>私有制</label>
+    <description>财产归个人所有。食物、医药、成瘾品的社会化上限为 75%。</description>
+    <impact>High</impact>
+    <preceptClass>Precept</preceptClass>
+  </PreceptDef>
+
+  <PreceptDef>
+    <defName>DshEco_PreceptPublicOwnership</defName>
+    <issue>DshEco_Ownership</issue>
+    <label>公有制</label>
+    <description>财产归集体所有。社会化可在 0%-100% 之间自由调整，税收只能是比例税或累进税。</description>
+    <impact>High</impact>
+    <preceptClass>Precept</preceptClass>
+  </PreceptDef>
+
+</Defs>

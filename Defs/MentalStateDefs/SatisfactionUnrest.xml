@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <MentalStateDef ParentName="BaseMentalState">
+    <defName>DshEco_Strike</defName>
+    <stateClass>DshEconomy.MentalState_Strike</stateClass>
+    <label>罢工</label>
+    <baseInspectLine>正在罢工：只吃饭睡觉闲逛，不干活</baseInspectLine>
+    <category>Misc</category>
+    <blockNormalThoughts>false</blockNormalThoughts>
+    <nameColor>(0.8,0.6,0.2)</nameColor>
+    <beginLetter>{0} 开始罢工了。</beginLetter>
+    <beginLetterDef>NegativeEvent</beginLetterDef>
+    <minTicksBeforeRecovery>120000</minTicksBeforeRecovery>
+    <maxTicksBeforeRecovery>120000</maxTicksBeforeRecovery>
+    <recoveryMtbDays>1</recoveryMtbDays>
+    <recoveryMessage>{0} 结束了罢工，回去干活了。</recoveryMessage>
+  </MentalStateDef>
+
+  <MentalStateDef ParentName="BaseMentalState">
+    <defName>DshEco_Riot</defName>
+    <stateClass>DshEconomy.MentalState_Riot</stateClass>
+    <label>暴动</label>
+    <baseInspectLine>正在暴动：攻击富人和建筑，打不过会逃离殖民地</baseInspectLine>
+    <category>Aggro</category>
+    <blockNormalThoughts>true</blockNormalThoughts>
+    <moodRecoveryThought>Catharsis</moodRecoveryThought>
+    <nameColor>(0.9,0.2,0.5)</nameColor>
+    <beginLetter>{0} 开始暴动！</beginLetter>
+    <beginLetterDef>ThreatSmall</beginLetterDef>
+    <minTicksBeforeRecovery>20000</minTicksBeforeRecovery>
+    <maxTicksBeforeRecovery>30000</maxTicksBeforeRecovery>
+    <recoveryMtbDays>0.5</recoveryMtbDays>
+    <recoveryMessage>{0} 的暴动平息了。</recoveryMessage>
+    <stateEffecter>Berserk</stateEffecter>
+  </MentalStateDef>
+
+  <MentalStateDef ParentName="BaseMentalState">
+    <defName>DshEco_Revolution</defName>
+    <stateClass>DshEconomy.MentalState_Revolution</stateClass>
+    <label>革命</label>
+    <baseInspectLine>正在革命：绝不退缩，战至最后一人</baseInspectLine>
+    <category>Aggro</category>
+    <blockNormalThoughts>true</blockNormalThoughts>
+    <moodRecoveryThought>Catharsis</moodRecoveryThought>
+    <nameColor>(0.8,0.1,0.1)</nameColor>
+    <beginLetter>{0} 掀起了革命！</beginLetter>
+    <beginLetterDef>ThreatBig</beginLetterDef>
+    <minTicksBeforeRecovery>30000</minTicksBeforeRecovery>
+    <maxTicksBeforeRecovery>45000</maxTicksBeforeRecovery>
+    <recoveryMtbDays>0.2</recoveryMtbDays>
+    <recoveryMessage>{0} 被击倒，革命暂时熄灭了。</recoveryMessage>
+    <stateEffecter>Berserk</stateEffecter>
+  </MentalStateDef>
+
+</Defs>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <JobDef>
+    <defName>DshEco_RepairBench</defName>
+    <driverClass>DshEconomy.JobDriver_RepairBench</driverClass>
+    <reportString>正在维修工作台。</reportString>
+    <casualInterruptible>true</casualInterruptible>
+    <allowOpportunisticPrefix>true</allowOpportunisticPrefix>
+  </JobDef>
+
+  <WorkGiverDef>
+    <defName>DshEco_RepairBench</defName>
+    <giverClass>DshEconomy.WorkGiver_RepairBench</giverClass>
+    <workType>Construction</workType>
+    <priorityInType>40</priorityInType>
+    <verb>维修</verb>
+    <gerund>维修工作台</gerund>
+  </WorkGiverDef>
+</Defs>

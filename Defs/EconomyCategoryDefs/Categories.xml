@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- 默认分类集合。其他 mod 可以照抄任何一条，换成自己的 defName 就能新增分类。 -->
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Augment</defName>
+    <label>医用植入物</label>
+    <description>仿生体、血清、基因、器官。单独一列定价：付不起就做不了，私有制下不受 50% 下限约束。</description>
+    <priority>95</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <essential>true</essential>
+    <priceFactor>1.3</priceFactor>
+    <matchThingCategories>
+      <li>BodyParts</li>
+      <li>BodyPartsArchotech</li>
+      <li>BodyPartsBionic</li>
+      <li>BodyPartsProsthetic</li>
+    </matchThingCategories>
+    <matchDefNameContains>
+      <li>Bionic</li>
+      <li>Archotech</li>
+      <li>Prosthetic</li>
+      <li>Organ</li>
+      <li>Serum</li>
+      <li>Gene</li>
+    </matchDefNameContains>
+  </DshEconomy.EconomyCategoryDef>
+
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Medicine</defName>
+    <label>医药</label>
+    <description>药品、医疗消耗品。基础需求，私有制文化下也建议保持较高公共化。</description>
+    <priority>90</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <essential>true</essential>
+    <priceFactor>1.2</priceFactor>
+    <matchThingCategories>
+      <li>Medicine</li>
+    </matchThingCategories>
+  </DshEconomy.EconomyCategoryDef>
+
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Food</defName>
+    <label>食物</label>
+    <description>原料食物、成品餐食、副产物。</description>
+    <priority>80</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <essential>true</essential>
+    <priceFactor>1.0</priceFactor>
+    <matchThingCategories>
+      <li>Foods</li>
+    </matchThingCategories>
+  </DshEconomy.EconomyCategoryDef>
+
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Drugs</defName>
+    <label>成瘾品</label>
+    <description>娱乐性与药用成瘾品，公共化通常较低。</description>
+    <priority>70</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <priceFactor>1.1</priceFactor>
+    <matchThingCategories>
+      <li>Drugs</li>
+    </matchThingCategories>
+  </DshEconomy.EconomyCategoryDef>
+
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Weapon</defName>
+    <label>武器</label>
+    <description>近战与远程武器、弹药类。</description>
+    <priority>65</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <priceFactor>1.0</priceFactor>
+    <matchThingCategories>
+      <li>Weapons</li>
+      <li>MortarShells</li>
+    </matchThingCategories>
+  </DshEconomy.EconomyCategoryDef>
+
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Apparel</defName>
+    <label>服装</label>
+    <description>衣物、护甲、头饰。</description>
+    <priority>60</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <priceFactor>1.0</priceFactor>
+    <matchThingCategories>
+      <li>Apparel</li>
+    </matchThingCategories>
+  </DshEconomy.EconomyCategoryDef>
+
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Material</defName>
+    <label>原材料</label>
+    <description>金属、石料、木材、纺织品等生产资料。</description>
+    <priority>50</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <priceFactor>1.0</priceFactor>
+    <matchThingCategories>
+      <li>ResourcesRaw</li>
+      <li>Manufactured</li>
+    </matchThingCategories>
+  </DshEconomy.EconomyCategoryDef>
+
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Goods</defName>
+    <label>制成品</label>
+    <description>零部件、艺术品、书籍、植入体等。</description>
+    <priority>40</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <priceFactor>1.0</priceFactor>
+    <matchThingCategories>
+      <li>Items</li>
+    </matchThingCategories>
+  </DshEconomy.EconomyCategoryDef>
+
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Misc</defName>
+    <label>杂项</label>
+    <description>兜底分类：没被任何分类认领的物品都会落在这里。</description>
+    <priority>-100</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <priceFactor>1.0</priceFactor>
+    <isFallback>true</isFallback>
+  </DshEconomy.EconomyCategoryDef>
+
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Container</defName>
+    <label>容器</label>
+    <description>储物建筑：货架、储物箱、冰箱等。单独设社会化程度；小人会优先买下公共容器，公共容器剩余不足 10% 时停止购买。</description>
+    <priority>60</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <priceFactor>1.2</priceFactor>
+  </DshEconomy.EconomyCategoryDef>
+
+</Defs>

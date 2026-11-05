@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <MainButtonDef>
+    <defName>DshEconomy</defName>
+    <label>经济</label>
+    <description>查看并调整殖民地内部经济的公共化程度与价格。</description>
+    <workerClass>DshEconomy.MainButtonWorker_Economy</workerClass>
+    <order>55</order>
+    <validWithoutMap>false</validWithoutMap>
+  </MainButtonDef>
+</Defs>

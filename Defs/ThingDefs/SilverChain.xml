@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- 未制成银：不可交易、占仓储与运力 -->
+  <ThingDef ParentName="ResourceBase">
+    <defName>DshEco_RawSilver</defName>
+    <label>未制成银</label>
+    <description>从矿井里采出、尚未精炼的粗银，杂质多、占地大，商人不会收购。需要送到银加工台才能变成白银。</description>
+    <graphicData>
+      <texPath>Things/Item/Resource/DshEco_RawSilver</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+    </graphicData>
+    <stackLimit>10</stackLimit>
+    <statBases>
+      <MarketValue>2</MarketValue>
+      <Mass>0.4</Mass>
+      <Flammability>1</Flammability>
+    </statBases>
+    <tradeability>None</tradeability>
+    <thingCategories>
+      <li>ResourcesRaw</li>
+    </thingCategories>
+  </ThingDef>
+
+  <!-- 银矿场：不烧燃料，木材作为配方原料；只能铺在石头地面上，露天效率高于屋内 -->
+  <ThingDef ParentName="BenchBase">
+    <defName>DshEco_SilverMine</defName>
+    <label>银矿场</label>
+    <description>用木材作为矿柱与支撑，从矿脉中采出未制成银。只能建在石头地面上，且露天效率高于屋内。</description>
+    <thingClass>Building_WorkTable</thingClass>
+    <size>(2,2)</size>
+    <graphicData>
+      <texPath>Things/Building/Production/DshEco_SilverMine</texPath>
+      <graphicClass>Graphic_Multi</graphicClass>
+      <drawSize>(2,2)</drawSize>
+    </graphicData>
+    <tickerType>Normal</tickerType>
+    <passability>PassThroughOnly</passability>
+    <fillPercent>0.4</fillPercent>
+    <designationCategory>Production</designationCategory>
+    <terrainAffordanceNeeded>Heavy</terrainAffordanceNeeded>
+    <statBases>
+      <WorkTableWorkSpeedFactor>1.25</WorkTableWorkSpeedFactor>
+      <WorkToBuild>6000</WorkToBuild>
+      <MaxHitPoints>300</MaxHitPoints>
+      <Flammability>0.6</Flammability>
+    </statBases>
+    <costList>
+      <Steel>120</Steel>
+      <WoodLog>40</WoodLog>
+    </costList>
+    <inspectorTabs>
+      <li>ITab_Bills</li>
+    </inspectorTabs>
+    <placeWorkers>
+      <li>DshEconomy.PlaceWorker_StonyGround</li>
+    </placeWorkers>
+    <modExtensions>
+      <li Class="DshEconomy.EconomyWorkplaceExtension">
+        <indoorsFactor>0.4</indoorsFactor>
+      </li>
+    </modExtensions>
+    <building>
+    </building>
+  </ThingDef>
+
+  <!-- 银加工台：把未制成银炼成白银，燃料用木材 -->
+  <ThingDef ParentName="BenchBase">
+    <defName>DshEco_SilverBench</defName>
+    <label>银加工台</label>
+    <description>把未制成银熔炼、提纯成可流通的白银。需要木材做燃料，屋内效率低于露天。</description>
+    <thingClass>Building_WorkTable</thingClass>
+    <size>(3,1)</size>
+    <graphicData>
+      <texPath>Things/Building/Production/DshEco_SilverBench</texPath>
+      <graphicClass>Graphic_Multi</graphicClass>
+      <drawSize>(3,1)</drawSize>
+    </graphicData>
+    <tickerType>Normal</tickerType>
+    <hasInteractionCell>true</hasInteractionCell>
+    <interactionCellOffset>(0,0,-1)</interactionCellOffset>
+    <passability>PassThroughOnly</passability>
+    <fillPercent>0.4</fillPercent>
+    <designationCategory>Production</designationCategory>
+    <terrainAffordanceNeeded>Light</terrainAffordanceNeeded>
+    <statBases>
+      <WorkTableWorkSpeedFactor>1.0</WorkTableWorkSpeedFactor>
+      <WorkToBuild>4000</WorkToBuild>
+      <MaxHitPoints>300</MaxHitPoints>
+      <Flammability>0.6</Flammability>
+    </statBases>
+    <costList>
+      <Steel>100</Steel>
+      <ComponentIndustrial>3</ComponentIndustrial>
+    </costList>
+    <comps>
+      <li Class="CompProperties_Refuelable">
+        <fuelFilter>
+          <thingDefs>
+            <li>WoodLog</li>
+          </thingDefs>
+        </fuelFilter>
+        <fuelCapacity>30</fuelCapacity>
+        <fuelConsumptionRate>3</fuelConsumptionRate>
+        <initialFuelPercent>1</initialFuelPercent>
+        <showFuelGizmo>true</showFuelGizmo>
+        <fuelLabel>木材</fuelLabel>
+      </li>
+    </comps>
+    <inspectorTabs>
+      <li>ITab_Bills</li>
+    </inspectorTabs>
+    <modExtensions>
+      <li Class="DshEconomy.EconomyWorkplaceExtension">
+        <indoorsFactor>0.5</indoorsFactor>
+      </li>
+    </modExtensions>
+    <building>
+    </building>
+  </ThingDef>
+
+</Defs>

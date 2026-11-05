@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- 矿井：10 木材 -> 1 未制成银 -->
+  <RecipeDef>
+    <defName>DshEco_MineRawSilver</defName>
+    <label>开采未制成银</label>
+    <description>消耗木材作为矿柱与燃料，从矿脉中采出未制成银。</description>
+    <jobString>正在开采未制成银。</jobString>
+    <workSpeedStat>GeneralLaborSpeed</workSpeedStat>
+    <workAmount>6000</workAmount>
+    <ingredients>
+      <li>
+        <filter>
+          <thingDefs>
+            <li>WoodLog</li>
+          </thingDefs>
+        </filter>
+        <count>10</count>
+      </li>
+    </ingredients>
+    <fixedIngredientFilter>
+      <thingDefs>
+        <li>WoodLog</li>
+      </thingDefs>
+    </fixedIngredientFilter>
+    <products>
+      <DshEco_RawSilver>1</DshEco_RawSilver>
+    </products>
+    <recipeUsers>
+      <li>DshEco_SilverMine</li>
+    </recipeUsers>
+    <workSkill>Mining</workSkill>
+  </RecipeDef>
+
+  <!-- 矿井 4 倍版：40 木材 -> 4 未制成银 -->
+  <RecipeDef>
+    <defName>DshEco_MineRawSilver_x4</defName>
+    <label>开采未制成银 x4</label>
+    <description>一次开采四份未制成银，节省来回搬运的时间。</description>
+    <jobString>正在批量开采未制成银。</jobString>
+    <workSpeedStat>GeneralLaborSpeed</workSpeedStat>
+    <workAmount>24000</workAmount>
+    <ingredients>
+      <li>
+        <filter>
+          <thingDefs>
+            <li>WoodLog</li>
+          </thingDefs>
+        </filter>
+        <count>40</count>
+      </li>
+    </ingredients>
+    <fixedIngredientFilter>
+      <thingDefs>
+        <li>WoodLog</li>
+      </thingDefs>
+    </fixedIngredientFilter>
+    <products>
+      <DshEco_RawSilver>4</DshEco_RawSilver>
+    </products>
+    <recipeUsers>
+      <li>DshEco_SilverMine</li>
+    </recipeUsers>
+    <workSkill>Mining</workSkill>
+  </RecipeDef>
+
+  <!-- 银加工台：5 未制成银 -> 3 白银（40% 损耗） -->
+  <RecipeDef>
+    <defName>DshEco_RefineSilver</defName>
+    <label>精炼白银</label>
+    <description>把未制成银精炼成白银。杂质在加工中被烧掉，产出低于投入。</description>
+    <jobString>正在精炼白银。</jobString>
+    <workSpeedStat>GeneralLaborSpeed</workSpeedStat>
+    <workAmount>4800</workAmount>
+    <ingredients>
+      <li>
+        <filter>
+          <thingDefs>
+            <li>DshEco_RawSilver</li>
+          </thingDefs>
+        </filter>
+        <count>5</count>
+      </li>
+    </ingredients>
+    <fixedIngredientFilter>
+      <thingDefs>
+        <li>DshEco_RawSilver</li>
+      </thingDefs>
+    </fixedIngredientFilter>
+    <products>
+      <Silver>3</Silver>
+    </products>
+    <recipeUsers>
+      <li>DshEco_SilverBench</li>
+      <li>ElectricSmelter</li>
+    </recipeUsers>
+    <workSkill>Crafting</workSkill>
+  </RecipeDef>
+
+</Defs>
