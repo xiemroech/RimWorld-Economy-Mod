@@ -1,0 +1,852 @@
+using System.Collections.Generic;
+using RimWorld;
+using UnityEngine;
+using Verse;
+
+namespace DshEconomy
+{
+    /// <summary>
+    /// 消费与囤积。
+    ///
+    /// 小人每小时有一次"消费冲动"，冲动强度由价格和通胀预期决定：
+    ///   - 价格低（尤其是全面社会化后的免费）→ 冲动暴增，抢购、囤积、用不完就浪费
+    ///   - 价格高 → 冲动下降，能不买就不买
+    ///   - 通胀压力越高 → 预期涨价，提前囤货
+    ///
+    /// 买来的东西从公共库存里搬进个人背包并标成私有，属于"囤积"；
+    /// 囤太多会定期浪费掉一部分（腐烂/闲置），这就是"生产过剩"的代价。
+    /// </summary>
+    public static class EconomyConsumption
+    {
+        // 基础冲动：每小时 12% 概率买一件
+        public const float BaseImpulse = 0.4f;
+
+        // 每小时统计一次，用来判断"为什么不买"
+        public static int StatTry, StatBroke, StatNoSpace, StatJob, StatNoStock;
+
+        // 每人"这一小时里没买成"的次数（目标未被满足），用于满意度里的"长期目标满足"门槛
+        private static readonly Dictionary<Pawn, int> unmet = new Dictionary<Pawn, int>();
+
+        public static void RecordUnmet(Pawn p)
+        {
+            if (p == null) return;
+            int n;
+            unmet.TryGetValue(p, out n);
+            unmet[p] = Mathf.Min(99, n + 1);
+        }
+
+        public static int UnmetCount(Pawn p)
+        {
+            if (p == null) return 0;
+            int n;
+            return unmet.TryGetValue(p, out n) ? n : 0;
+        }
+
+        /// <summary>每小时把没买成的计数减半，反映"最近这段时间"的满足情况。</summary>
+        public static void DecayUnmet()
+        {
+            if (unmet.Count == 0) return;
+            List<Pawn> keys = new List<Pawn>(unmet.Keys);
+            for (int i = 0; i < keys.Count; i++)
+            {
+                Pawn k = keys[i];
+                if (k == null || k.Dead || k.Destroyed) { unmet.Remove(k); continue; }
+                int v = unmet[k] / 2;
+                if (v <= 0) unmet.Remove(k); else unmet[k] = v;
+            }
+        }
+
+        // 免费时的抢购倍数
+        public const float FreeBoost = 5f;
+
+        // 价格参考：价格等于这个数时冲动为 1.0
+        public const float PriceReference = 15f;
+
+        // 背包重量用到这个比例就不再买（按实时重量算，不按件数）
+        public const float HoardFillRatio = 0.8f;
+
+        // 私有物重量占负重超过这个比例，视为"囤积过多"，开始出现浪费
+        public const float WasteFillRatio = 0.6f;
+
+        // 有购买冲动但放不下时，有多大概率因此不满
+        public const float NoSpacePenaltyChance = 0.5f;
+
+        // 每天出现浪费的概率（私有物重量超过负重的 60% 时才开始判）
+        public const float WasteChance = 0.35f;
+
+        private static int lastConsumeTick = -99999;
+
+    /// <summary>读档时清掉跨存档的静态计时器与缓存，避免时间倒退导致长时间不消费。</summary>
+    public static void ResetRuntime()
+    {
+        lastConsumeTick = -99999;
+        foodCacheMap = null;
+        foodCacheTick = -99999;
+        foodCache.Clear();
+    }
+
+        public static void Tick(Map map)
+        {
+            if (map == null) return;
+            int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+            if (now - lastConsumeTick < 2500) return;   // 每游戏小时一次
+            lastConsumeTick = now;
+
+            MapEconomyComponent comp = map.GetComponent<MapEconomyComponent>();
+            if (comp == null) return;
+
+            List<Pawn> colonists = new List<Pawn>(map.mapPawns.FreeColonists);
+            // 没有容器的人先买，避免"有空间的人顺手把箱子买光、没箱子的人永远买不到"
+            colonists.Sort((a, b) => BuyPriority(a, map).CompareTo(BuyPriority(b, map)));
+            for (int i = 0; i < colonists.Count; i++)
+            {
+                Buy(map, comp, colonists[i]);
+            }
+
+            // 每天结算一次浪费
+            if (now % GenDate.TicksPerDay < 2500)
+            {
+                for (int i = 0; i < colonists.Count; i++) Waste(map, comp, colonists[i]);
+            }
+        }
+
+
+        /// <summary>饿了就先去买：私有食物不足且饿了，立刻从市场/仓库买一份，别直接抓公共的。</summary>
+        public static void UrgentFood(Map map, Pawn p)
+        {
+            if (map == null || p == null || p.Dead || p.Downed || p.needs == null || p.needs.food == null) return;
+            if (p.needs.food.CurLevelPercentage > 0.35f) return;
+            if (HasPrivateFood(p, map)) return;
+            if (EconomyMarket.HasPending(p)) return;
+
+            float price;
+            Thing stock = EconomyMarket.PickFromMarket(map, p, "DshEco_Food", out price);
+            if (stock != null)
+            {
+                int n = WantedAmount(p, stock.def, "DshEco_Food", map);
+                if (EconomyMarket.StartPurchase(map, p, stock, n, price)) return;
+            }
+            ThingDef def;
+            Thing src = PickStock(map, "DshEco_Food", p, out def, out price);
+            if (src != null)
+            {
+                int n = WantedAmount(p, def, "DshEco_Food", map);
+                EconomyMarket.StartPurchase(map, p, src, n, price);
+            }
+        }
+
+        /// <summary>买箱子的优先度：没容器 0，快满了 1，其它 2。</summary>
+        private static int BuyPriority(Pawn p, Map map)
+        {
+            float free = EconomyPrivateStorageBehavior.FreeRatio(p, map, out int _, out int _);
+            if (free < 0f) return 0;              // 完全没有容器
+            if (free <= PrivateFreeFloor) return 1;
+            return 2;
+        }
+
+
+        /// <summary>取这件物品所属分类的社会化程度（0–1）。取不到时按 0 处理。</summary>
+        private static float FreeDesireCurve(Map map, Thing thing, MapEconomyComponent comp)
+        {
+            if (map == null || thing == null || thing.def == null || comp == null) return 0f;
+            EconomyCategoryDef cat = EconomyRegistry.CategoryOf(thing.def);
+            if (cat == null) return 0f;
+            return Mathf.Clamp01(comp.GetPublicization(cat) / 100f);
+        }
+
+        private static int lastStatTick = -99999;
+
+        private static void LogStatsIfDue()
+        {
+            int now = Find.TickManager.TicksGame;
+            if (now - lastStatTick < 2500) return;
+            lastStatTick = now;
+            if (StatTry == 0 && StatBroke == 0 && StatNoSpace == 0 && StatJob == 0 && StatNoStock == 0) return;
+            Log.Message("[CONSUME] 近一小时：找到货 " + StatTry + " 次，没找到货 " + StatNoStock
+                        + "，缺钱 " + StatBroke + "，没地方 " + StatNoSpace + "，实际派活 " + StatJob);
+            StatTry = StatBroke = StatNoSpace = StatJob = StatNoStock = 0;
+            DecayUnmet();
+        }
+
+        private static void Buy(Map map, MapEconomyComponent comp, Pawn p)
+        {
+            if (p == null || p.Dead || p.Downed || p.inventory == null) return;
+            LogStatsIfDue();
+
+            // 自己还没有私有仓库 → 最高优先级买一个
+            float freeRatio = EconomyPrivateStorageBehavior.FreeRatio(p, map, out _, out _);
+            if (freeRatio < 0f)
+            {
+                TryBuyContainer(map, comp, p);
+                return;
+            }
+
+            // 储物容量空余不足 10%，或者任何一格都放不下了 → 先补买容器
+            if (freeRatio <= PrivateFreeFloor || !EconomyPrivateStorageBehavior.HasRoomForAny(p, map))
+            {
+                if (TryBuyContainer(map, comp, p)) return;
+
+                if (Rand.Chance(NoSpacePenaltyChance))
+                {
+                    EconomySatisfactionEvents.Add(p, "私有仓库放不下", -2f, 1);
+                    EconomySatisfaction.Recompute(p);
+                }
+                return;
+            }
+
+            // 空位充足：不买容器，直接买消费品
+
+            string wantCat = PreferredCategory(p);
+
+            // 自己买的食物还没吃完 → 先吃自己的，不重复买
+            if (wantCat == "DshEco_Food" && HasPrivateFood(p, map)) return;
+
+            // 市场摊位优先：市场有货就从市场拿；市场没有才退回普通仓库/地面
+            Thing stock = EconomyMarket.PickFromMarket(map, p, wantCat, out float price);
+            if (stock == null && wantCat == "DshEco_Food")
+            {
+                stock = PickFood(map, p, out ThingDef def, out price);
+            }
+            else if (stock == null)
+            {
+                stock = PickStock(map, wantCat, p, out ThingDef def2, out price);
+                if (stock == null) stock = PickFood(map, p, out def2, out price);
+            }
+            // 想要的分类没货 → 依次退到其它日用分类，别直接放弃
+            if (stock == null)
+            {
+                string[] fallback = { "DshEco_Food", "DshEco_Drugs", "DshEco_Goods", "DshEco_Medicine" };
+                for (int fi = 0; fi < fallback.Length && stock == null; fi++)
+                {
+                    if (fallback[fi] == wantCat) continue;
+                    if (fallback[fi] == "DshEco_Medicine" && !SelfTend(p) && !Whitelisted(null)) continue;
+                    stock = EconomyMarket.PickFromMarket(map, p, fallback[fi], out price);
+                    if (stock != null) break;
+                    stock = PickStock(map, fallback[fi], p, out ThingDef fd, out price);
+                    if (stock == null) stock = PickFood(map, p, out fd, out price);
+                }
+            }
+            if (stock == null) { StatNoStock++; RecordUnmet(p); return; }
+
+            bool fromMarket = EconomyMarket.InMarket(stock);
+
+            bool free = price <= 0.05f;
+            float impulse = BaseImpulse;
+
+            // 购买欲随社会化平滑上升：0% = ×1，50% ≈ ×1.5，100% = ×5（三次曲线，无跳变）
+            float pub01 = FreeDesireCurve(map, stock, comp);
+            impulse *= 1f + (FreeBoost - 1f) * pub01 * pub01 * pub01;
+            impulse *= 1f + Mathf.Max(0f, EconomyInflation.Pressure(map));
+
+            // 消费欲：娱乐越缺越想花钱（无聊的人会乱买）
+            if (p.needs != null && p.needs.joy != null)
+                impulse *= 1f + (1f - p.needs.joy.CurLevelPercentage) * 0.9f;
+            // 手里钱越多越舍得花（最多 +60%）
+            int pocket = EconomyBank.PrivateSilver(map, p);
+            impulse *= 1f + Mathf.Min(0.6f, pocket / 800f);
+
+            if (!Rand.Chance(Mathf.Clamp01(impulse))) return;
+
+            // 冲动成立、真要买了，才检查放不放得下
+            if (!HasSpace(p))
+            {
+                StatNoSpace++;
+                if (Rand.Chance(NoSpacePenaltyChance))
+                {
+                    EconomySatisfactionEvents.Add(p, "想买但没地方放", -2f, 1);
+                    EconomySatisfaction.Recompute(p);
+                }
+                return;
+            }
+
+            int buyCount = WantedAmount(p, stock.def, wantCat, map);
+            if (buyCount <= 0) return;
+            StatTry++;
+            int costCheck = Mathf.CeilToInt(price * buyCount);
+            if (costCheck > 0 && EconomyBank.PrivateSilver(map, p) < costCheck) { StatBroke++; RecordUnmet(p); return; }
+
+            // 只派"去拿货"的 job；钱等货真正进背包时再扣（见 EconomyMarket.OnInventoryAdded）
+            bool started = EconomyMarket.StartPurchase(map, p, stock, buyCount, free ? 0f : price);
+            if (started) StatJob++;
+            if (started && !fromMarket)
+            {
+                // 市场没货、只能去仓库/地上翻找 → 记一笔「繁复的寻找」，−2，可叠加
+                EconomySatisfactionEvents.Add(p, "繁复的寻找（去仓库翻找货品）", -1f, 3);
+                EconomySatisfaction.Recompute(p);
+            }
+        }
+
+
+        // ---------------- 食物等级与恩格尔系数 ----------------
+        // 0 = 生食、1 = 低级制成（简单/精致以下的烹饪）、2 = 高级制成（精致及以上）
+        public const float EngelPoor = 0.5f;   // 恩格尔系数高于此：只买生食
+        public const float EngelMid = 0.25f;   // 高于此：低级制成；低于此才考虑高级
+
+        /// <summary>食物等级：看原版 preferability。</summary>
+        public static int FoodTierOf(ThingDef def)
+        {
+            if (def == null || def.ingestible == null) return 0;
+            FoodPreferability pr = def.ingestible.preferability;
+            if (pr >= FoodPreferability.MealFine) return 2;
+            if (pr >= FoodPreferability.MealAwful) return 1;
+            return 0;
+        }
+
+        // ── 财富系数：相对殖民地中位私产的动态倍率 ──
+        private static Map wfMap;
+        private static int wfTick = -99999;
+        private static float wfMedian = 1f;
+
+        public static float WealthFactor(Pawn p, Map map)
+        {
+            if (p == null || map == null) return 1f;
+            if (map != wfMap || GenTicks.TicksGame - wfTick > 2500)
+            {
+                wfMap = map; wfTick = GenTicks.TicksGame;
+                List<float> vals = new List<float>();
+                List<Pawn> crew = map.mapPawns.FreeColonists;
+                for (int i = 0; i < crew.Count; i++)
+                {
+                    Pawn q = crew[i];
+                    if (q == null || q.Dead) continue;
+                    vals.Add(TaxPopulation.PawnWealth(q));
+                }
+                if (vals.Count == 0) wfMedian = 1f;
+                else { vals.Sort(); wfMedian = vals[vals.Count / 2]; }
+            }
+            if (wfMedian <= 1f) return 1f;
+            float ratio = TaxPopulation.PawnWealth(p) / wfMedian;
+            return Mathf.Clamp(0.75f + ratio * 0.35f, 0.75f, 1.6f);
+        }
+
+        /// <summary>这个人当前买得起、也愿意买的最高食物等级。</summary>
+        public static int PreferredFoodTier(Pawn p, Map map)
+        {
+            if (p == null || map == null) return 0;
+
+            float income = EconomyLedger.GetIncome(p);
+            if (income <= 0.01f) income = EconomyLedger.GetLastIncome(p);   // 本期还没发薪就用上期
+            // 家底也算“购买力”：私产每 20 银折 1 银/期收入，富人即使这期没工资也吃得更好
+            income = Mathf.Max(income, TaxPopulation.PawnWealth(p) / 20f);
+            float price = CheapestFoodPrice(map, 0);
+            // 一天两顿的基本伙食占本期收入的比例，就是这里的恩格尔系数
+            float engel = income > 0.01f ? (price * 2f) / income : 1f;
+
+            int tier = engel > EngelPoor ? 0 : (engel > EngelMid ? 1 : 2);
+
+            // 买不起就往下退
+            int silver = EconomyBank.PrivateSilver(map, p);
+            while (tier > 0)
+            {
+                float cost = CheapestFoodPrice(map, tier);
+                if (cost > 0.01f && silver >= cost) break;
+                tier--;
+            }
+            return tier;
+        }
+
+
+        // 地图上的"在售食物"缓存：每小时重建一次，避免每个小人每顿饭都全图扫一遍。
+        // （原先每个小人每小时要全图扫 6 次并逐个 WillEat，几十人时就明显卡顿。）
+        private static Map foodCacheMap;
+        private static int foodCacheTick = -99999;
+        private static readonly List<Thing> foodCache = new List<Thing>();
+
+        private static List<Thing> FoodMarket(Map map)
+        {
+            int now = Find.TickManager.TicksGame;
+            if (foodCacheMap == map && now - foodCacheTick < 2500) return foodCache;
+
+            foodCache.Clear();
+            List<Thing> all = map.listerThings.AllThings;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Thing t = all[i];
+                if (t == null || t.def == null || t.Destroyed) continue;
+                if (IsCandidate(t, "DshEco_Food", null)) foodCache.Add(t);
+            }
+            foodCacheMap = map;
+            foodCacheTick = now;
+            return foodCache;
+        }
+
+        private static float CheapestFoodPrice(Map map, int tier)
+        {
+            float best = float.MaxValue;
+            List<Thing> all = FoodMarket(map);
+            for (int i = 0; i < all.Count; i++)
+            {
+                Thing t = all[i];
+                if (t == null || t.Destroyed || !t.Spawned) continue;
+                if (FoodTierOf(t.def) != tier) continue;
+                float price = EconomyPrice.UnitPrice(t, map);
+                if (price < best) best = price;
+            }
+            return best == float.MaxValue ? 0f : best;
+        }
+
+
+
+        /// <summary>
+        /// 这个小人到底吃不吃这东西：原版 FoodUtility.WillEat 会考虑种族食谱（食肉/食草/特殊饮食）、
+        /// 戒律、头衔、食物政策、mod 追加的禁忌，所以 mod 食物与 mod 种族自动兼容。
+        /// </summary>
+        private static bool Eatable(Pawn p, Thing t)
+        {
+            if (p == null || t == null || t.def == null) return true;
+            if (t.def.ingestible == null) return false;
+            try
+            {
+                // getter 传自己：拿的是"本人吃"的判定，不是"喂别人"
+                return p.WillEat(t, p);
+            }
+            catch
+            {
+                return true;   // 判定异常时不要因此让人饿死，放行
+            }
+        }
+
+        /// <summary>存放组的物主（堆放区看 zone、存储建筑看 building）。</summary>
+        private static Pawn OwnerOfStorageGroup(SlotGroup g)
+        {
+            if (g == null) return null;
+            Zone zone = g.parent as Zone;
+            if (zone != null) return EconomyRealEstate.OwnerOf(zone);
+            Building b = g.parent as Building;
+            if (b != null) return EconomyRealEstate.OwnerOfBuilding(b);
+            return null;
+        }
+
+        /// <summary>私有物里已经有吃得上的东西（营养合计 ≥ 0.3）就先吃掉，不再买。</summary>
+        /// <summary>统计地图上料斗/营养膏机里的可食营养（公共食物，也算"有得吃"）。</summary>
+        private static float HopperNutrition(Map map, Pawn p)
+        {
+            if (map == null) return 0f;
+            float sum = 0f;
+            foreach (Building b in map.listerBuildings.allBuildingsColonist)
+            {
+                if (b == null || b.Destroyed) continue;
+                if (b.def == null || b.def.defName != "Hopper") continue;
+                IThingHolder holder = b as IThingHolder;
+                if (holder == null) continue;
+                ThingOwner owner = holder.GetDirectlyHeldThings();
+                if (owner == null) continue;
+                if (owner == null) continue;
+                foreach (Thing t in owner)
+                {
+                    if (t == null || t.def == null) continue;
+                    if (!t.def.IsNutritionGivingIngestible) continue;
+                    if (p != null && !Eatable(p, t)) continue;
+                    sum += t.GetStatValue(StatDefOf.Nutrition) * t.stackCount;
+                }
+            }
+            return sum;
+        }
+
+        /// <summary>营养膏不属于"囤粮"：好吃程度太低，不计入库存判断，但仍可单独购买。</summary>
+        public static bool IsPasteDef(ThingDef def)
+        {
+            if (def == null) return false;
+            if (def == ThingDefOf.MealNutrientPaste) return true;
+            string n = def.defName ?? string.Empty;
+            return n.IndexOf("NutrientPaste", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || n.IndexOf("PasteMeal", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        public static bool HasPrivateFood(Pawn p, Map map)
+        {
+            return StoredNutrition(p, map, false) >= 5.4f * WealthFactor(p, map);
+        }
+
+        /// <summary>私人存粮的营养总量；includePaste 决定营养膏算不算存粮。</summary>
+        public static float StoredNutrition(Pawn p, Map map, bool includePaste)
+        {
+            if (p == null) return 0f;
+            float nutrition = 0f;
+
+            if (p.inventory != null)
+            {
+                foreach (Thing t in p.inventory.innerContainer)
+                {
+                    if (t == null || t.def == null) continue;
+                    if (EconomyPrivate.OwnerOf(t) != p) continue;
+                    if (t.def.IsNutritionGivingIngestible && (includePaste || !IsPasteDef(t.def)) && Eatable(p, t)) nutrition += t.GetStatValue(StatDefOf.Nutrition) * t.stackCount;
+                }
+            }
+
+            if (nutrition < 5.4f && map != null && map.haulDestinationManager != null)
+            {
+                foreach (SlotGroup g in map.haulDestinationManager.AllGroupsListForReading)
+                {
+                    if (g == null || g.CellsList == null) continue;
+                    if (OwnerOfStorageGroup(g) != p) continue;   // 只看自己的仓库
+                    for (int i = 0; i < g.CellsList.Count; i++)
+                    {
+                        List<Thing> here = g.CellsList[i].GetThingList(map);
+                        for (int k = 0; k < here.Count; k++)
+                        {
+                            Thing t = here[k];
+                            if (t == null || t.def == null) continue;
+                            if (EconomyPrivate.OwnerOf(t) != p) continue;
+                            if (t.def.IsNutritionGivingIngestible && (includePaste || !IsPasteDef(t.def)) && Eatable(p, t)) nutrition += t.GetStatValue(StatDefOf.Nutrition) * t.stackCount;
+                        }
+                    }
+                    if (nutrition >= 5.4f) break;
+                }
+            }
+            // 营养膏机的料斗不是存储建筑，但里面的食物同样"能吃"：按同权计入已有食物
+            if (nutrition < 5.4f) nutrition += HopperNutrition(map, p);
+
+            return nutrition;
+        }
+
+        /// <summary>
+        /// 挑食物：在自己买得起的等级里取最高档；同档内按原版 FoodOptimality 加权随机，
+        /// 这样种族/戒律/口味偏好（mod 追加的也算在内）会自然被优先选中。
+        /// </summary>
+        private static Thing PickFood(Map map, Pawn p, out ThingDef def, out float price)
+        {
+            def = null;
+            price = 0f;
+            int maxTier = PreferredFoodTier(p, map);
+            int silver = EconomyBank.PrivateSilver(map, p);
+            List<Thing> all = FoodMarket(map);
+
+            List<Thing> pool = new List<Thing>();
+            List<float> opts = new List<float>();
+
+            for (int tier = maxTier; tier >= 0; tier--)
+            {
+                pool.Clear();
+                opts.Clear();
+                float minOpt = float.MaxValue;
+
+                for (int i = 0; i < all.Count; i++)
+                {
+                    Thing t = all[i];
+                    if (t == null || t.Destroyed || !t.Spawned || t.stackCount <= 0) continue;
+                    if (EconomyPrivate.IsPrivate(t)) continue;
+                    if (!Eatable(p, t)) continue;
+                    if (FoodTierOf(t.def) != tier) continue;
+                    if (!Affordable(t, p, map, silver)) continue;
+
+                    float opt = 0f;
+                    try { opt = FoodUtility.FoodOptimality(p, t, t.def, 0f); }
+                    catch { opt = 0f; }
+
+                    pool.Add(t);
+                    opts.Add(opt);
+                    if (opt < minOpt) minOpt = opt;
+                }
+
+                if (pool.Count == 0) continue;
+
+                // 最优的那份权重最高；同档里"更爱吃"的出现概率更大，但不是必定
+                float total = 0f;
+                for (int i = 0; i < pool.Count; i++)
+                {
+                    float w = Mathf.Max(0.05f, opts[i] - minOpt + 0.1f);
+                    opts[i] = w;
+                    total += w;
+                }
+
+                float roll = Rand.Value * total;
+                Thing chosen = pool[pool.Count - 1];
+                for (int i = 0; i < pool.Count; i++)
+                {
+                    roll -= opts[i];
+                    if (roll <= 0f) { chosen = pool[i]; break; }
+                }
+
+                def = chosen.def;
+                price = EconomyPrice.UnitPrice(chosen, map);
+                return chosen;
+            }
+            return null;
+        }
+
+        private static bool Affordable(Thing t, Pawn p, Map map, int silver)
+        {
+            float unit = EconomyPrice.UnitPrice(t, map);
+            if (unit <= 0.05f) return true;
+            int n = WantedAmount(p, t.def, "DshEco_Food", map);
+            return silver >= Mathf.CeilToInt(unit * n);
+        }
+
+        /// <summary>从地图库存里挑一件"消费品"：优先食物、成瘾品、药品，其次其它已归类物品。</summary>
+        // 小人自己私有仓库的空余格子低于 10% 时，停止一切购买
+        public const float PrivateFreeFloor = 0.1f;
+
+        /// <summary>买容器：把一座公共储物建筑的所有权买下来。公共剩余不足 10% 时停止。</summary>
+
+
+        private static bool TryBuyContainer(Map map, MapEconomyComponent comp, Pawn p)
+        {
+            if (map.listerBuildings == null) return false;
+            List<Building> all = new List<Building>();
+            foreach (Building b in map.listerBuildings.allBuildingsColonist) all.Add(b);
+            var pub = new List<Building_Storage>();
+            int total = 0;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Building_Storage st = all[i] as Building_Storage;
+                if (st == null) continue;
+                if (st is Building_Market) continue;   // 市场是商店，不是可以买走的私有仓库
+                total++;
+                if (EconomyRealEstate.OwnerOfBuilding(st) == null && EconomyRealEstate.IsForSale(st)) pub.Add(st);
+            }
+            if (total == 0 || pub.Count == 0) return false;
+
+            // 先挑买得起的，再挑便宜的
+            Building_Storage pick = null;
+            float best = float.MaxValue;
+            for (int i = 0; i < pub.Count; i++)
+            {
+                float price = EconomyPrice.UnitPrice(pub[i].def, map);
+                if (price > best) continue;
+                int cost = Mathf.CeilToInt(price);
+                if (cost > 0 && EconomyBank.PrivateSilver(map, p) < cost) continue;
+                best = price;
+                pick = pub[i];
+            }
+            if (pick == null) return false;
+
+            int finalCost = Mathf.CeilToInt(EconomyPrice.UnitPrice(pick.def, map));
+            if (finalCost > 0)
+            {
+                // TakePrivateSilver 只是把银币的"私有"标签摘掉，钱留在原地变成公共银，
+                // 等于付给了殖民地；再调用 GiveColonySilver 会凭空多出一份钱（通胀），所以不能加。
+                if (EconomyBank.TakePrivateSilver(map, p, finalCost) < finalCost) return false;
+            }
+
+            EconomyRealEstate.SetBuildingOwner(pick, p);
+            comp.consumptionBought++;
+            Log.Message("[CONSUME] " + p.LabelShort + " 买下容器 " + pick.def.label
+                + "（" + finalCost + " 银），公共容器剩余 " + (pub.Count - 1) + "/" + total);
+            return true;
+        }
+
+        /// <summary>这个人有没有私有仓库；有则顺便返回格子总数与已占用数。</summary>
+        private static bool PrivateCells(Pawn p, Map map, out int cells, out int used)
+        {
+            cells = 0;
+            used = 0;
+            if (p == null || map == null || map.listerBuildings == null) return false;
+
+            foreach (Building b in map.listerBuildings.allBuildingsColonist)
+            {
+                Building_Storage st = b as Building_Storage;
+                if (st == null) continue;
+                if (EconomyRealEstate.OwnerOfBuilding(st) != p) continue;
+
+                SlotGroup g = st.GetSlotGroup();
+                if (g == null || g.CellsList == null) continue;
+                for (int c = 0; c < g.CellsList.Count; c++)
+                {
+                    cells++;
+                    IntVec3 cell = g.CellsList[c];
+                    List<Thing> things = map.thingGrid.ThingsListAt(cell);
+                    for (int t = 0; t < things.Count; t++)
+                    {
+                        if (things[t].def.category == ThingCategory.Item) { used++; break; }
+                    }
+                }
+            }
+            return cells > 0;
+        }
+
+        /// <summary>这次要买多少：食物按营养算一天的量，其它按 1–2 件。</summary>
+        private static int WantedAmount(Pawn p, ThingDef def, string category, Map map = null)
+        {
+            if (def == null) return 1;
+            if (category == "DshEco_Food")
+            {
+                float nutrition = def.GetStatValueAbstract(StatDefOf.Nutrition);
+                if (nutrition <= 0.01f) return 1;
+                // 按"还差几顿"决定买多少：存粮（含营养膏）够 6 顿就不买
+                if (map != null && p != null)
+                {
+                    float target = 5.4f * WealthFactor(p, map);
+                    float deficit = target - StoredNutrition(p, map, true);
+                    if (deficit <= 0.01f) return 0;
+                    int need = Mathf.CeilToInt(deficit / nutrition);
+                    int cap = IsPasteDef(def) ? 6 : 10;
+                    return Mathf.Clamp(need, 1, cap + 4);
+                }
+                int n = Mathf.CeilToInt(0.9f / nutrition);
+                return Mathf.Clamp(n, 1, 10);
+            }
+            if (category == "DshEco_Medicine") return 2;
+            if (category == "DshEco_Drugs") return 2;
+            return 1;
+        }
+
+        /// <summary>按需求决定这次想买哪一类：饿→食物，娱乐低→成瘾品，受伤→医药，平时→食物/制成品。</summary>
+        private static string PreferredCategory(Pawn p)
+        {
+            if (p.needs != null)
+            {
+                if (p.needs.food != null && p.needs.food.CurLevel < 0.55f) return "DshEco_Food";
+                if (p.needs.joy != null && p.needs.joy.CurLevel < 0.4f) return "DshEco_Drugs";
+            }
+            if (p.health != null && p.health.hediffSet != null && p.health.hediffSet.hediffs != null)
+            {
+                List<Hediff> hediffs = p.health.hediffSet.hediffs;
+                for (int i = 0; i < hediffs.Count; i++)
+                {
+                    if (hediffs[i] is Hediff_Injury) return "DshEco_Medicine";
+                }
+            }
+            return Rand.Chance(0.7f) ? "DshEco_Food" : "DshEco_Goods";
+        }
+
+        /// <summary>背包还有没有空间：按实时重量算（装备 + 背包总重 vs 负重上限）。</summary>
+        private static bool HasSpace(Pawn p)
+        {
+            if (p == null) return false;
+            float cap = MassUtility.Capacity(p);
+            if (cap <= 0f) return false;
+            float used = MassUtility.GearAndInventoryMass(p);
+            return used < cap * HoardFillRatio;
+        }
+
+        /// <summary>私有物的总重量（不算货币）。</summary>
+        private static float PrivateMass(Pawn p)
+        {
+            if (p == null || p.inventory == null) return 0f;
+            float m = 0f;
+            foreach (Thing t in p.inventory.innerContainer)
+            {
+                if (t == null || t.def == null) continue;
+                if (EconomyRegistry.IsCurrency(t.def)) continue;
+                if (!EconomyPrivate.IsPrivate(t)) continue;
+                m += t.def.GetStatValueAbstract(StatDefOf.Mass) * t.stackCount;
+            }
+            return m;
+        }
+
+        /// <summary>是否开了自我治疗：没开的人不许买医药类（白名单除外）。</summary>
+        public static bool SelfTend(Pawn p)
+        {
+            return p != null && p.playerSettings != null && p.playerSettings.selfTend;
+        }
+
+        public static bool Whitelisted(ThingDef def)
+        {
+            DshEconomySettings s = DshEconomyMod.Settings;
+            return def != null && s != null && s.medicalWhitelist != null
+                && s.medicalWhitelist.Contains(def.defName);
+        }
+
+        private static Thing PickStock(Map map, string categoryDefName, Pawn p, out ThingDef def, out float price)
+        {
+            def = null;
+            price = 0f;
+
+            List<Thing> all = map.listerThings.AllThings;
+            int count = 0;
+            for (int i = 0; i < all.Count; i++)
+            {
+                if (!IsCandidate(all[i], categoryDefName, p)) continue;
+                count++;
+            }
+            if (count == 0) return null;
+
+            int pick = Rand.Range(0, count);
+            for (int i = 0; i < all.Count; i++)
+            {
+                Thing t = all[i];
+                if (!IsCandidate(t, categoryDefName, p)) continue;
+                if (pick-- > 0) continue;
+                def = t.def;
+                price = EconomyPrice.UnitPrice(t, map);
+                return t;
+            }
+            return null;
+        }
+
+
+        /// <summary>器官、仿生体、血清、基因这类"植入物"，不参与日常消费购买。</summary>
+        public static bool IsImplantLike(ThingDef def)
+        {
+            if (def == null) return false;
+            EconomyCategoryDef cat = EconomyRegistry.CategoryOf(def);
+            if (cat != null && cat.defName == "DshEco_Augment") return true;
+            if (def.isTechHediff) return true;                       // 仿生体/植入物
+            if (def.comps != null)
+            {
+                for (int i = 0; i < def.comps.Count; i++)
+                {
+                    if (def.comps[i].GetType().Name == "CompProperties_UseEffectInstallHediff") return true;
+                }
+            }
+
+            if (def.thingCategories != null)
+            {
+                for (int i = 0; i < def.thingCategories.Count; i++)
+                {
+                    ThingCategoryDef tc = def.thingCategories[i];
+                    if (tc == null || tc.defName == null) continue;
+                    string n = tc.defName;
+                    if (n.StartsWith("BodyParts") || n == "Genes" || n == "Serums") return true;
+                }
+            }
+
+            string dn = def.defName ?? string.Empty;
+            return dn.IndexOf("Bionic", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || dn.IndexOf("Archotech", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || dn.IndexOf("Prosthetic", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || dn.IndexOf("Organ", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || dn.IndexOf("Serum", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || dn.IndexOf("Gene", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        public static bool IsCandidate(Thing t, string categoryDefName, Pawn p)
+        {
+            if (t == null || t.def == null || t.stackCount <= 0) return false;
+            if (t.def.category != ThingCategory.Item) return false;
+            if (EconomyRegistry.IsCurrency(t.def)) return false;
+            if (EconomyPrivate.IsPrivate(t)) return false;
+
+            string dn = t.def.defName;
+            if (dn.IndexOf("Waste", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || dn.IndexOf("Pollution", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || dn.IndexOf("Toxic", System.StringComparison.OrdinalIgnoreCase) >= 0) return false;
+
+            // 器官/仿生体/血清/基因不是"消费品"：只由手术按需结算，不做冲动购买
+            if (IsImplantLike(t.def)) return false;
+
+            EconomyCategoryDef cat = EconomyRegistry.CategoryOf(t.def);
+            if (cat == null || cat.defName != categoryDefName) return false;
+
+            // 医药类：没开自我治疗的人只能买白名单里的
+            if (categoryDefName == "DshEco_Medicine" && !SelfTend(p) && !Whitelisted(t.def)) return false;
+            return true;
+        }
+
+        /// <summary>囤太多就浪费：随机毁掉一件私有物品，并记账。</summary>
+        private static void Waste(Map map, MapEconomyComponent comp, Pawn p)
+        {
+            if (p == null || p.inventory == null) return;
+            List<Thing> hoard = new List<Thing>();
+            foreach (Thing t in p.inventory.innerContainer)
+            {
+                if (t == null || t.def == null) continue;
+                if (EconomyRegistry.IsCurrency(t.def)) continue;
+                if (!EconomyPrivate.IsPrivate(t)) continue;
+                hoard.Add(t);
+            }
+            float cap = MassUtility.Capacity(p);
+            float mass = PrivateMass(p);
+            if (cap <= 0f || mass < cap * WasteFillRatio) return;
+            if (!Rand.Chance(Mathf.Clamp(WasteChance * WealthFactor(p, map), 0.15f, 0.7f))) return;
+
+            if (hoard.Count == 0) return;
+            Thing victim = hoard[Rand.Range(0, hoard.Count)];
+            int n = victim.stackCount;
+            victim.Destroy(DestroyMode.Vanish);
+            comp.consumptionWasted += n;
+            Log.Message("[CONSUME] " + p.LabelShort + " 囤积浪费 " + n + " 件");
+        }
+    }
+}
