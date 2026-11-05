@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+
+  <!-- 给所有烹饪配方补上 workSkill=Cooking。
+       这样原版 GenRecipe 在产出时会用厨师的烹饪等级生成品质，
+       配合 MealBase 上已加的 CompQuality，食物就有了"由厨师决定"的等级。 -->
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/RecipeDef[requiredGiverWorkType="Cooking" and not(workSkill)]</xpath>
+    <value>
+      <workSkill>Cooking</workSkill>
+    </value>
+  </Operation>
+
+</Patch>

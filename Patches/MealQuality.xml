@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+
+  <!-- 给所有原版餐食加上"品质"这一项数值（不是新增物品）。
+       同一份简单餐可能是一般/良好/优秀，占用不同堆叠，也能按品质定价。
+
+       xpath 带守卫：如果已经有 Mod 给 MealBase 挂过 CompQuality，就不再重复添加。 -->
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[@Name="MealBase"]/comps[not(li/compClass[text()="CompQuality"])]</xpath>
+    <value>
+      <li>
+        <compClass>CompQuality</compClass>
+      </li>
+    </value>
+  </Operation>
+
+</Patch>

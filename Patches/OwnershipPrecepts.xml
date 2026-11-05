@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+  <!-- 公有制戒律改为运行时注入 MemeDef.requiredPrecepts（见 EconomyPreceptForcer.InjectMemeRequirements） -->
+</Patch>
