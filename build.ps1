@@ -70,6 +70,22 @@ if (-not $dll -or $buildExit -ne 0) {
 Copy-Item $dll.FullName $asmDir -Force
 Write-Host ("BUILT: {0} ({1} bytes)" -f $dll.FullName, $dll.Length) -ForegroundColor Green
 
+# ── 开源镜像：源码一变就同步到 G:\RimWorld-Economy-Mod ──
+$pub = 'G:\RimWorld-Economy-Mod'
+if (Test-Path $pub) {
+    foreach ($sub in @('About', 'Defs', 'Patches', 'Source', 'Textures')) {
+        $srcDir = Join-Path $root $sub
+        if (-not (Test-Path $srcDir)) { continue }
+        robocopy $srcDir (Join-Path $pub $sub) /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+    }
+    foreach ($f in @('LICENSE', 'build.ps1')) {
+        $srcF = Join-Path $root $f
+        if (Test-Path $srcF) { Copy-Item $srcF (Join-Path $pub $f) -Force }
+    }
+    Write-Host "PUBLISHED: $pub" -ForegroundColor Cyan
+}
+
+
 if ($Install) {
     $dest = Join-Path $rw 'Mods\Economy'
     New-Item -ItemType Directory -Force -Path $dest | Out-Null

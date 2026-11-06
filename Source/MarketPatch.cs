@@ -37,7 +37,7 @@ namespace DshEconomy
             }
 
             // 只给"市场购买"打私有：任务奖励、拾取、搬运不该被误标。
-            if (item.def != null && inv.pawn.IsColonist && item.def.IsIngestible
+            if (item.def != null && inv.pawn.IsColonist
                 && EconomyMarket.HasPending(inv.pawn)
                 && EconomyPrivate.OwnerOf(item) == null)
             {

@@ -27,7 +27,7 @@ namespace DshEconomy
                 "防合并私有标签", "显示标签", "产权存储", "库存生成追踪",
                 "搬运", "食物进食", "劳动工资", "市场购买",
                 "营养膏机", "医疗CE", "满意度", "动乱战斗",
-                "折旧维修", "贸易", "文化戒律", "军人"
+                "折旧维修", "贸易", "文化戒律", "军人", "私有物使用"
             };
             bool[] groupOk = new bool[groupNames.Length];
 
@@ -47,6 +47,7 @@ namespace DshEconomy
             groupOk[13] = PatchTrade(harmony);
             groupOk[14] = PatchPrecepts(harmony);
             groupOk[15] = PatchMilitary(harmony);
+            groupOk[16] = PatchPrivateUse(harmony);
 
             int succeeded = 0;
             List<string> failed = new List<string>();
@@ -452,6 +453,20 @@ namespace DshEconomy
             catch (Exception e)
             {
                 Log.Warning("[DSH-ECONOMY] 劳动工资 补丁失败：" + e.Message);
+                return false;
+            }
+        }
+
+        // ── 分组：私有物使用（不是自己的不能穿/不能拿） ─────────────
+        private static bool PatchPrivateUse(Harmony harmony)
+        {
+            try
+            {
+                return PrivateUseBlock.Patch(harmony);
+            }
+            catch (Exception e)
+            {
+                Log.Warning("[DSH-ECONOMY] 私有物使用 补丁失败：" + e.Message);
                 return false;
             }
         }

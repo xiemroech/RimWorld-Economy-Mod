@@ -676,6 +676,11 @@ namespace DshEconomy
                 int n = Mathf.CeilToInt(0.9f / nutrition);
                 return Mathf.Clamp(n, 1, 10);
             }
+            if (map != null && p != null)
+            {
+                int need = EconomyItemStock.Needed(p, def, map);
+                return Mathf.Clamp(need, 0, EconomyItemStock.MaxCount(def));
+            }
             if (category == "DshEco_Medicine") return 2;
             if (category == "DshEco_Drugs") return 2;
             return 1;
@@ -697,6 +702,9 @@ namespace DshEconomy
                     if (hediffs[i] is Hediff_Injury) return "DshEco_Medicine";
                 }
             }
+            // 没武器先补武器；衣物不够再补衣物（都按价格决定要几件）
+            if (p.equipment != null && p.equipment.Primary == null) return "DshEco_Weapon";
+            if (p.apparel != null && p.apparel.WornApparelCount < 3) return "DshEco_Apparel";
             return Rand.Chance(0.7f) ? "DshEco_Food" : "DshEco_Goods";
         }
 
