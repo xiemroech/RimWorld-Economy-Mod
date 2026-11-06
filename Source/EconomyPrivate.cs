@@ -14,7 +14,9 @@ namespace DshEconomy
 
         public static CompItemTag TagOf(Thing t)
         {
-            return t != null ? t.TryGetComp<CompItemTag>() : null;
+            if (t == null) return null;
+            try { return t.TryGetComp<CompItemTag>(); }
+            catch { return null; }   // comps 列表被外部破坏时不要连累整帧
         }
 
         public static bool IsPrivate(Thing t)
@@ -40,7 +42,7 @@ namespace DshEconomy
                 CompInjector.EnsureTag(t, ref dummy);
                 c = TagOf(t);
             }
-            if (c != null) c.owner = owner;
+            if (c != null) c.owner = owner;   // 只改字段，绝不从 comps 列表里删元素
             if (owner == null && t.def == ThingDefOf.Silver
                 && t.ParentHolder is Pawn_InventoryTracker it && it.pawn != null)
             {
@@ -111,6 +113,44 @@ namespace DshEconomy
         }
 
         /// <summary>某人身上、但仍属公共的东西：背包 + 穿戴 + 手持。</summary>
+        /// <summary>
+        /// 修复被早期版本（直接 comps.RemoveAt）破坏的 comps 列表。
+        /// 做法：对每个 ThingWithComps 试读一次组件，抛异常就重建 comps。
+        /// </summary>
+        public static int PruneEmptyTags(Map map)
+        {
+            if (map == null || map.listerThings == null) return 0;
+            int fixedCount = 0;
+            List<Thing> all = map.listerThings.AllThings;
+            for (int i = 0; i < all.Count; i++)
+            {
+                ThingWithComps twc = all[i] as ThingWithComps;
+                if (twc == null || twc.Destroyed) continue;
+                try { twc.TryGetComp<CompItemTag>(); }
+                catch
+                {
+                    try
+                    {
+                        twc.comps.Clear();
+                        twc.InitializeComps();
+                        fixedCount++;
+                    }
+                    catch { }
+                }
+            }
+            return fixedCount;
+        }
+
+        public static void PruneAllMaps()
+        {
+            int n = 0;
+            if (Find.Maps != null)
+            {
+                for (int i = 0; i < Find.Maps.Count; i++) n += PruneEmptyTags(Find.Maps[i]);
+            }
+            if (n > 0) Log.Message("[DSH-ECONOMY] 组件表修复：重建 " + n + " 个物品的 comps");
+        }
+
         public static List<Thing> PublicHeld(Pawn pawn)
         {
             List<Thing> result = new List<Thing>();

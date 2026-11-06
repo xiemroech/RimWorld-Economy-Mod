@@ -316,6 +316,17 @@ namespace DshEconomy
             return paid >= price;
         }
 
+        /// <summary>地图上有没有营养膏机（有的话居民就不买生食，直接去吃现成的）。</summary>
+        public static bool HasDispenser(Map map)
+        {
+            if (map == null) return false;
+            foreach (Building b in map.listerBuildings.allBuildingsColonist)
+            {
+                if (b is Building_NutrientPasteDispenser d && !d.IsBrokenDown()) return true;
+            }
+            return false;
+        }
+
         public static bool IsPaste(Thing t)
         {
             if (t == null || t.def == null) return false;

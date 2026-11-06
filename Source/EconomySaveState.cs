@@ -106,6 +106,22 @@ namespace DshEconomy
                 if (Scribe.mode == LoadSaveMode.PostLoadInit && Current.Game != null)
                 {
                     foreach (Map m in Current.Game.Maps) EconomyMilitary.ReapplyAll(m);
+                    // 清掉旧版本误挂到动物/皮毛等非建筑上的「故障」组件
+                    EconomyDepreciation.CleanupNonBuildings();
+                    EconomyPrivate.PruneAllMaps();
+                    try
+                    {
+                        EconomyRealEstate estate = Current.Game.GetComponent<EconomyRealEstate>();
+                        if (estate != null)
+                        {
+                            estate.Sanitize();
+                            // 关闭容器出售时，旧存档里"某人私有"的箱子会挡住公共物品入库，
+                            // 这里统一收回公共，避免出现"公共箱子不被读取"
+
+                        }
+                    }
+                    catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 产权清理失败：" + e.Message); }
+                    EconomySelfCheck.PendingDump = true;
                     // 老存档的文化里没有「财产制度」戒律，这里补一条
                     Map any = Current.Game.Maps != null && Current.Game.Maps.Count > 0 ? Current.Game.Maps[0] : null;
                     EconomyPreceptForcer.Enforce(any);

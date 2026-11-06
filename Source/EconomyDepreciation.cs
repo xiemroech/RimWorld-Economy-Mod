@@ -46,6 +46,9 @@ namespace DshEconomy
             foreach (ThingDef def in DefDatabase<ThingDef>.AllDefs)
             {
                 if (def?.thingClass == null) continue;
+                // 只认真正的建筑：某些 mod 的生物/物品类也实现了 IBillGiver，
+                // 之前会给动物、皮毛之类的 def 也挂上 CompBreakdownable，表现为"动物身上显示故障"
+                if (def.category != ThingCategory.Building && !typeof(Building).IsAssignableFrom(def.thingClass)) continue;
                 if (!typeof(IBillGiver).IsAssignableFrom(def.thingClass)) continue;
                 if (def.comps == null) def.comps = new List<CompProperties>();
                 if (def.comps.Any(c => c is CompProperties_Breakdownable)) continue;
@@ -53,6 +56,32 @@ namespace DshEconomy
                 n++;
             }
             Log.Message("[DSH-ECONOMY] 折旧：为 " + n + " 种生产建筑补上损坏组件");
+        }
+
+        /// <summary>清掉旧存档里被错误挂到非建筑（动物、皮毛等）上的损坏组件。</summary>
+        public static void CleanupNonBuildings()
+        {
+            int n = 0;
+            foreach (Map map in Find.Maps)
+            {
+                if (map == null) continue;
+                foreach (Thing t in map.listerThings.AllThings)
+                {
+                    if (t is ThingWithComps twc && !(t is Building)) n += Strip(twc);
+                }
+                foreach (Pawn pw in map.mapPawns.AllPawnsSpawned)
+                {
+                    n += Strip(pw);
+                }
+            }
+            if (n > 0) Log.Message("[DSH-ECONOMY] 折旧清理：移除 " + n + " 个非建筑身上的损坏组件");
+        }
+
+        private static int Strip(ThingWithComps twc)
+        {
+            if (twc?.comps == null) return 0;
+            int removed = twc.comps.RemoveAll(c => c is CompBreakdownable);
+            return removed;
         }
 
         public static void Tick(Map map)

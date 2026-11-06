@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
+using Verse.AI;
 
 namespace DshEconomy
 {
@@ -154,6 +155,75 @@ namespace DshEconomy
             return Mathf.Clamp01(comp.GetPublicization(cat) / 100f);
         }
 
+        /// <summary>把购买欲望拆成明细（给界面看）。lines 里每行是"项 ×系数"，返回最终值。</summary>
+        public static float DesireBreakdown(Pawn p, Map map, List<string> lines)
+        {
+            if (p == null || map == null) return 0f;
+            MapEconomyComponent comp = map.GetComponent<MapEconomyComponent>();
+            float d = BaseImpulse;
+            if (lines != null) lines.Add("基础冲动 " + (BaseImpulse * 100f).ToString("0") + "%");
+
+            EconomyCategoryDef food = null;
+            foreach (EconomyCategoryDef c in EconomyRegistry.Categories)
+            {
+                if (c != null && c.defName == "DshEco_Food") { food = c; break; }
+            }
+            float pub = (food != null && comp != null) ? comp.GetPublicization(food) : 50f;
+            float pub01 = Mathf.Clamp01(pub / 100f);
+            float pubF = 1f + (FreeBoost - 1f) * pub01 * pub01 * pub01;
+            d *= pubF;
+            if (lines != null) lines.Add("社会化 " + pub.ToString("0") + "% → ×" + pubF.ToString("0.00"));
+
+            if (p.needs != null && p.needs.joy != null)
+            {
+                float joyF = 1f + (1f - p.needs.joy.CurLevelPercentage) * 0.9f;
+                d *= joyF;
+                if (lines != null) lines.Add("无聊（娱乐 " + (p.needs.joy.CurLevelPercentage * 100f).ToString("0") + "%）→ ×" + joyF.ToString("0.00"));
+            }
+
+            int cash = EconomyBank.PrivateSilver(map, p);
+            int spendable = Mathf.Max(0, cash - EconomySavings.Of(p));
+            float cashF = 1f + Mathf.Min(0.6f, spendable / 800f);
+            d *= cashF;
+            if (lines != null) lines.Add("可支配 " + spendable + " 银（私银 " + cash + " − 存款 " + EconomySavings.Of(p) + "）→ ×" + cashF.ToString("0.00"));
+
+            if (EconomySavings.SavingForGoal(p, map))
+            {
+                d *= 0.6f;
+                if (lines != null) lines.Add("正在攒钱（目标 " + EconomySavings.TargetOf(p, map) + " 银）→ ×0.60");
+            }
+
+            float final = Mathf.Clamp01(d);
+            if (lines != null) lines.Add("= " + (final * 100f).ToString("0") + "%");
+            return final;
+        }
+
+        /// <summary>当前购买欲望（0–1），只用于界面展示，不参与实际掷骰。</summary>
+        public static float DesireOf(Pawn p, Map map)
+        {
+            if (p == null || map == null) return 0f;
+            MapEconomyComponent comp = map.GetComponent<MapEconomyComponent>();
+            float d = BaseImpulse;
+
+            EconomyCategoryDef food = null;
+            foreach (EconomyCategoryDef c in EconomyRegistry.Categories)
+            {
+                if (c != null && c.defName == "DshEco_Food") { food = c; break; }
+            }
+            float pub01 = (food != null && comp != null) ? Mathf.Clamp01(comp.GetPublicization(food) / 100f) : 0.5f;
+            d *= 1f + (FreeBoost - 1f) * pub01 * pub01 * pub01;
+
+            if (p.needs != null && p.needs.joy != null)
+                d *= 1f + (1f - p.needs.joy.CurLevelPercentage) * 0.9f;
+
+            int spendable = Mathf.Max(0, EconomyBank.PrivateSilver(map, p) - EconomySavings.Of(p));
+            d *= 1f + Mathf.Min(0.6f, spendable / 800f);
+
+            if (EconomySavings.SavingForGoal(p, map)) d *= 0.6f;
+
+            return Mathf.Clamp01(d);
+        }
+
         private static int lastStatTick = -99999;
 
         private static void LogStatsIfDue()
@@ -197,9 +267,18 @@ namespace DshEconomy
             // 空位充足：不买容器，直接买消费品
 
             string wantCat = PreferredCategory(p);
+            string goalCatNow = null;
+            if (map != null)
+            {
+                goalCatNow = GoalCategory(p, map);
+                if (goalCatNow != null) wantCat = goalCatNow;
+            }
 
             // 自己买的食物还没吃完 → 先吃自己的，不重复买
             if (wantCat == "DshEco_Food" && HasPrivateFood(p, map)) return;
+
+            // 正在做饭：不要去买生食，等着吃刚做好的
+            if (IsCooking(p)) return;
 
             // 市场摊位优先：市场有货就从市场拿；市场没有才退回普通仓库/地面
             Thing stock = EconomyMarket.PickFromMarket(map, p, wantCat, out float price);
@@ -230,6 +309,9 @@ namespace DshEconomy
 
             bool fromMarket = EconomyMarket.InMarket(stock);
 
+            // 存款下限：多余现金先按比例存起来，目标是"想买的那件大件"
+            EconomySavings.Accrue(p, map);
+
             bool free = price <= 0.05f;
             float impulse = BaseImpulse;
 
@@ -242,8 +324,30 @@ namespace DshEconomy
             if (p.needs != null && p.needs.joy != null)
                 impulse *= 1f + (1f - p.needs.joy.CurLevelPercentage) * 0.9f;
             // 手里钱越多越舍得花（最多 +60%）
-            int pocket = EconomyBank.PrivateSilver(map, p);
+            int pocket = Mathf.Max(0, EconomyBank.PrivateSilver(map, p) - EconomySavings.Of(p));
             impulse *= 1f + Mathf.Min(0.6f, pocket / 800f);
+
+            // 负担感：这件东西占我总财富的比例越大，越舍不得买
+            {
+                float wealth = TaxPopulation.PawnWealth(p);
+                if (wealth > 1f && price > 0.01f)
+                {
+                    float burden = price / (wealth * 0.02f);
+                    impulse *= Mathf.Clamp(1f / Mathf.Max(0.05f, burden), 0.25f, 1.5f);
+                }
+            }
+
+            // CE 弹药：没对应武器不买；总量 10 组封顶；买得越多欲望越低
+            if (CEAmmo.IsAmmoDef(stock.def))
+            {
+                if (!CEAmmo.OwnsWeaponFor(p, stock.def)) return;
+                int owned = CEAmmo.OwnedStacks(p, stock.def, map);
+                if (owned >= CEAmmo.MaxStacks) return;
+                impulse *= 1f / (1f + owned * 0.25f);
+            }
+
+            // 攒够钱的目标大件不打折，直接买（否则永远"只攒不买"）
+            if (goalCatNow != null) impulse = 1f;
 
             if (!Rand.Chance(Mathf.Clamp01(impulse))) return;
 
@@ -261,13 +365,44 @@ namespace DshEconomy
 
             int buyCount = WantedAmount(p, stock.def, wantCat, map);
             if (buyCount <= 0) return;
+
+            int spendable = EconomyBank.PrivateSilver(map, p) - EconomySavings.Of(p);
+
+            // 目标大件：攒够就该买，动用存款（不然永远"只攒不买"）
+            bool buyingGoal = false;
+            if (map != null)
+            {
+                string gc = GoalCategory(p, map);
+                if (gc != null && wantCat == gc)
+                {
+                    buyingGoal = true;
+                    spendable = EconomyBank.PrivateSilver(map, p);
+                }
+            }
+
+            // 真饿了就动用存款买吃的，不能为了攒钱饿死
+            if (wantCat == "DshEco_Food" && p.needs != null && p.needs.food != null && p.needs.food.CurLevelPercentage < 0.35f)
+                spendable = EconomyBank.PrivateSilver(map, p);
+
+            // 份数按"现金 ÷ 单价"收口：一次最多花掉可支配现金的 30%，别把殖民地口粮一把买光
+            if (price > 0.01f)
+            {
+                int affordable = Mathf.FloorToInt(spendable / price);
+                int budgetCap = Mathf.Max(1, Mathf.FloorToInt(spendable * 0.3f / price));
+                buyCount = Mathf.Min(buyCount, Mathf.Min(affordable, budgetCap));
+            }
+            if (buyCount <= 0) { StatBroke++; RecordUnmet(p); return; }
             StatTry++;
             int costCheck = Mathf.CeilToInt(price * buyCount);
-            if (costCheck > 0 && EconomyBank.PrivateSilver(map, p) < costCheck) { StatBroke++; RecordUnmet(p); return; }
+            if (costCheck > 0 && spendable < costCheck) { StatBroke++; RecordUnmet(p); return; }
 
             // 只派"去拿货"的 job；钱等货真正进背包时再扣（见 EconomyMarket.OnInventoryAdded）
             bool started = EconomyMarket.StartPurchase(map, p, stock, buyCount, free ? 0f : price);
-            if (started) StatJob++;
+            if (started)
+            {
+                StatJob++;
+                if (buyingGoal) EconomySavings.Take(p, costCheck);
+            }
             if (started && !fromMarket)
             {
                 // 市场没货、只能去仓库/地上翻找 → 记一笔「繁复的寻找」，−2，可叠加
@@ -334,8 +469,13 @@ namespace DshEconomy
 
             int tier = engel > EngelPoor ? 0 : (engel > EngelMid ? 1 : 2);
 
-            // 买不起就往下退
+            // 现金决定"敢不敢吃贵的"：手里没钱时，恩格尔再低也只吃生食
             int silver = EconomyBank.PrivateSilver(map, p);
+            int spendable = Mathf.Max(0, silver - EconomySavings.Of(p));
+            int cashTier = spendable >= 100 ? 2 : (spendable >= 40 ? 1 : 0);
+            if (tier > cashTier) tier = cashTier;
+
+            // 买不起就往下退
             while (tier > 0)
             {
                 float cost = CheapestFoodPrice(map, tier);
@@ -453,9 +593,20 @@ namespace DshEconomy
                 || n.IndexOf("PasteMeal", System.StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        /// <summary>存粮目标营养：基准 6 顿，粮越便宜囤得越多（3–12 顿），再按财富系数放大。</summary>
+        public static float FoodTargetNutrition(Pawn p, Map map)
+        {
+            float price = 0f;
+            if (map != null) price = CheapestFoodPrice(map, 0);
+            float coef = price > 0.01f ? Mathf.Clamp(30f / price, 0.4f, 3f) : 1f;
+            float meals = Mathf.Clamp(6f * (0.55f + 0.45f * coef), 3f, 12f);
+            if (p != null && map != null && EconomySavings.SavingForGoal(p, map)) meals = Mathf.Min(meals, 3f);
+            return meals * 0.9f * (p != null && map != null ? WealthFactor(p, map) : 1f);
+        }
+
         public static bool HasPrivateFood(Pawn p, Map map)
         {
-            return StoredNutrition(p, map, false) >= 5.4f * WealthFactor(p, map);
+            return StoredNutrition(p, map, false) >= FoodTargetNutrition(p, map);
         }
 
         /// <summary>私人存粮的营养总量；includePaste 决定营养膏算不算存粮。</summary>
@@ -474,7 +625,7 @@ namespace DshEconomy
                 }
             }
 
-            if (nutrition < 5.4f && map != null && map.haulDestinationManager != null)
+            if (map != null && map.haulDestinationManager != null)
             {
                 foreach (SlotGroup g in map.haulDestinationManager.AllGroupsListForReading)
                 {
@@ -509,6 +660,9 @@ namespace DshEconomy
             def = null;
             price = 0f;
             int maxTier = PreferredFoodTier(p, map);
+            // 有营养膏机就别买生食了（现成的免费/半价饭在那儿），只买做好的饭
+            int minTier = EconomyPasteDispenser.HasDispenser(map) ? 1 : 0;
+            if (maxTier < minTier) return null;
             int silver = EconomyBank.PrivateSilver(map, p);
             List<Thing> all = FoodMarket(map);
 
@@ -527,7 +681,7 @@ namespace DshEconomy
                     if (t == null || t.Destroyed || !t.Spawned || t.stackCount <= 0) continue;
                     if (EconomyPrivate.IsPrivate(t)) continue;
                     if (!Eatable(p, t)) continue;
-                    if (FoodTierOf(t.def) != tier) continue;
+                    if (FoodTierOf(t.def) != tier || tier < minTier) continue;
                     if (!Affordable(t, p, map, silver)) continue;
 
                     float opt = 0f;
@@ -666,19 +820,46 @@ namespace DshEconomy
                 // 按"还差几顿"决定买多少：存粮（含营养膏）够 6 顿就不买
                 if (map != null && p != null)
                 {
-                    float target = 5.4f * WealthFactor(p, map);
+                    float target = FoodTargetNutrition(p, map);
                     float deficit = target - StoredNutrition(p, map, true);
                     if (deficit <= 0.01f) return 0;
                     int need = Mathf.CeilToInt(deficit / nutrition);
-                    int cap = IsPasteDef(def) ? 6 : 10;
-                    return Mathf.Clamp(need, 1, cap + 4);
+
+                    // 全局上限：手里现金的一半是"口粮封顶"，超过就一份都不再买
+                    // （不然这一小时买 2 份、下一小时接着买，最后还是一个把市场吃空）
+                    float unit = EconomyPrice.UnitPrice(def, map);
+                    if (unit > 0.01f)
+                    {
+                        int cash = EconomyBank.PrivateSilver(map, p) - EconomySavings.Of(p);
+                        int allowMeals = Mathf.FloorToInt(Mathf.Max(0f, cash * 0.5f) / unit);
+                        int haveMeals = Mathf.RoundToInt(StoredNutrition(p, map, true) / nutrition);
+                        need = Mathf.Min(need, allowMeals - haveMeals);
+                    }
+
+                    int cap = IsPasteDef(def) ? 6 : 4;   // 单次最多 4 份，别把殖民地口粮一把抓光
+                    return Mathf.Clamp(need, 0, cap);
                 }
                 int n = Mathf.CeilToInt(0.9f / nutrition);
                 return Mathf.Clamp(n, 1, 10);
             }
+            if (CEAmmo.IsAmmoDef(def) && p != null && map != null)
+            {
+                int owned = CEAmmo.OwnedStacks(p, def, map);
+                if (owned >= CEAmmo.MaxStacks) return 0;
+                return 1;   // 一次买一组，慢慢补到预设
+            }
             if (map != null && p != null)
             {
                 int need = EconomyItemStock.Needed(p, def, map);
+                if (need <= 0) return 0;
+                // 与食物同样的全局封顶：这件东西最多占有可支配现金的一半
+                float unit = EconomyPrice.UnitPrice(def, map);
+                if (unit > 0.01f)
+                {
+                    int cash = EconomyBank.PrivateSilver(map, p) - EconomySavings.Of(p);
+                    int affordable = Mathf.FloorToInt(Mathf.Max(0f, cash * 0.5f) / unit);
+                    need = Mathf.Min(need, affordable);
+                }
                 return Mathf.Clamp(need, 0, EconomyItemStock.MaxCount(def));
             }
             if (category == "DshEco_Medicine") return 2;
@@ -687,6 +868,18 @@ namespace DshEconomy
         }
 
         /// <summary>按需求决定这次想买哪一类：饿→食物，娱乐低→成瘾品，受伤→医药，平时→食物/制成品。</summary>
+        /// <summary>存款够目标价时，优先把这件大件买下来。</summary>
+        public static string GoalCategory(Pawn p, Map map)
+        {
+            ThingDef g = EconomySavings.Goal(p);
+            if (g == null || map == null) return null;
+            int price = EconomySavings.GoalPrice(g, map);
+            if (price <= 0) return null;
+            if (EconomyBank.PrivateSilver(map, p) < price) return null;
+            EconomyCategoryDef cat = EconomyRegistry.CategoryOf(g);
+            return cat != null ? cat.defName : null;
+        }
+
         private static string PreferredCategory(Pawn p)
         {
             if (p.needs != null)
@@ -706,6 +899,24 @@ namespace DshEconomy
             if (p.equipment != null && p.equipment.Primary == null) return "DshEco_Weapon";
             if (p.apparel != null && p.apparel.WornApparelCount < 3) return "DshEco_Apparel";
             return Rand.Chance(0.7f) ? "DshEco_Food" : "DshEco_Goods";
+        }
+
+        /// <summary>正在做饭（含灶台 bill 烹饪）：这时候别去买生食，等着吃成品。</summary>
+        public static bool IsCooking(Pawn p)
+        {
+            if (p == null || p.jobs == null || p.jobs.curJob == null) return false;
+            Job job = p.jobs.curJob;
+            if (job.def == null) return false;
+            if (job.def.defName == "Cook" || job.def.defName == "DoBill") return true;
+            if (job.bill != null && job.bill.recipe != null && job.bill.recipe.products != null)
+            {
+                for (int i = 0; i < job.bill.recipe.products.Count; i++)
+                {
+                    ThingDef prod = job.bill.recipe.products[i].thingDef;
+                    if (prod != null && prod.IsIngestible) return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>背包还有没有空间：按实时重量算（装备 + 背包总重 vs 负重上限）。</summary>

@@ -796,7 +796,7 @@ namespace DshEconomy
                 if (z is Zone_Stockpile) zoneCount++;
             }
 
-            float contentHeight = 156f + zoneCount * 24f + 60f;
+            float contentHeight = 200f + zoneCount * 24f + 60f;
             for (int ci = 0; ci < colonists.Count; ci++)
             {
                 List<Thing> ownedList;
@@ -811,13 +811,16 @@ namespace DshEconomy
             Rect viewRect = new Rect(0f, 0f, outRect.width - 18f, contentHeight);
             Widgets.BeginScrollView(outRect, ref scroll, viewRect);
 
-            if (Widgets.ButtonText(new Rect(2f, 4f, 160f, 26f), "囤积统计"))
+            if (Widgets.ButtonText(new Rect(2f, 4f, 140f, 26f), "囤积统计"))
             {
                 Find.WindowStack.Add(new Window_Hoarding());
             }
-            Widgets.Label(new Rect(170f, 8f, 380f, 22f),
-                "私有堆放区与私有存储建筑只收物主自己的东西（在售容器 "
-                + EconomyRealEstate.CountForSale(map) + " 个）");
+            if (Widgets.ButtonText(new Rect(148f, 4f, 140f, 26f), "欲望明细"))
+            {
+                Find.WindowStack.Add(new Window_Desire(map));
+            }
+            Widgets.Label(new Rect(296f, 10f, 240f, 22f),
+                "在售容器 " + EconomyRealEstate.CountForSale(map) + " 个");
 
             if (Widgets.ButtonText(new Rect(viewRect.width - 300f, 4f, 60f, 26f), "财富"))
             {
@@ -834,10 +837,23 @@ namespace DshEconomy
                 privateSortMode = 2;
                 SortColonists(colonists, map, index);
             }
-            float y = 38f;
-            Widgets.Label(new Rect(4f, y, viewRect.width, 22f),
-                "私有物品可「社会化」交回集体；「征用私有」会掉心情（-12，持续 5 天）。最右列 ×N = 消费财富系数（相对殖民地的中位私产）。");
-            y += 28f;
+            float y = 34f;
+            Widgets.Label(new Rect(4f, y, viewRect.width, 40f),
+                "私有物品可「社会化」交回集体；「征用私有」会掉心情（-12，持续 5 天）。×N = 消费财富系数（相对中位私产）；欲望 = 当前购买欲（越高越容易冲动消费，存款期间会压低）。");
+            y += 44f;
+            Text.Font = GameFont.Tiny;
+            GUI.color = new Color(0.75f, 0.75f, 0.75f);
+            Widgets.Label(new Rect(4f, y, 150f, 20f), "居民");
+            Widgets.Label(new Rect(150f, y, 80f, 20f), "私银");
+            Widgets.Label(new Rect(226f, y, 80f, 20f), "件数");
+            Widgets.Label(new Rect(292f, y, 80f, 20f), "重量");
+            Widgets.Label(new Rect(360f, y, 140f, 20f), "私有仓库");
+            Widgets.Label(new Rect(500f, y, 52f, 20f), "估值");
+            Widgets.Label(new Rect(548f, y, 44f, 20f), "财富×");
+            Widgets.Label(new Rect(594f, y, 50f, 20f), "欲望");
+            GUI.color = Color.white;
+            Text.Font = GameFont.Small;
+            y += 26f;
 
             for (int i = 0; i < colonists.Count; i++)
             {
@@ -869,8 +885,16 @@ namespace DshEconomy
                 Widgets.Label(new Rect(row.x + 500f, row.y + 4f, 52f, 24f), ownedValue.ToString("0.#"));
                 float wf = EconomyConsumption.WealthFactor(p, map);
                 Widgets.Label(new Rect(row.x + 548f, row.y + 4f, 44f, 24f), "×" + wf.ToString("0.00"));
+                float desire = EconomyConsumption.DesireOf(p, map);
+                Color old = GUI.color;
+                GUI.color = desire >= 0.65f ? new Color(1f, 0.55f, 0.45f)
+                          : (desire <= 0.2f ? new Color(0.7f, 0.85f, 1f) : Color.white);
+                Rect desireRect = new Rect(row.x + 594f, row.y + 4f, 50f, 24f);
+                Widgets.Label(desireRect, (desire * 100f).ToString("0") + "%");
+                TooltipHandler.TipRegion(desireRect, EconomySavings.PlanText(p, map));
+                GUI.color = old;
 
-                if (owned.Count > 0 && Widgets.ButtonText(new Rect(row.x + 590f, row.y + 2f, 84f, 24f), "征用私有"))
+                if (owned.Count > 0 && Widgets.ButtonText(new Rect(row.x + 648f, row.y + 2f, 84f, 24f), "征用私有"))
                 {
                     int n = EconomyPrivate.Confiscate(p, map);
                     Messages.Message("已征用 " + p.LabelShort + " 的 " + n + " 件私产", MessageTypeDefOf.NeutralEvent, false);

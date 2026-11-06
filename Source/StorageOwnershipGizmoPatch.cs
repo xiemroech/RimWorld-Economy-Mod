@@ -40,7 +40,9 @@ namespace DshEconomy
             if (coin != null) sale.icon = coin;
             sale.action = delegate
             {
-                EconomyRealEstate.SetForSale(storage, !EconomyRealEstate.IsForSale(storage));
+                bool nowSale = !EconomyRealEstate.IsForSale(storage);
+                    if (nowSale) EconomyRealEstate.ForceEnableSale();
+                    EconomyRealEstate.SetForSale(storage, nowSale);
             };
             gizmos.Add(sale);
 

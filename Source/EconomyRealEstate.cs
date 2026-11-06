@@ -1,4 +1,6 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using RimWorld;
 using Verse;
 
@@ -21,6 +23,53 @@ namespace DshEconomy
 
         // 禁止被小人购买的容器（玩家上锁）
         private List<Building> notForSale = new List<Building>();
+
+        // 容器出售总开关（默认关闭）
+        public bool containerSaleEnabled = false;
+
+        /// <summary>把每个存放组的归属打出来，用于确认"公共箱子到底被谁认领了"。</summary>
+        public static void Diagnose(Map map)
+        {
+            if (map == null || map.haulDestinationManager == null) return;
+            if (Find.TickManager != null && Find.TickManager.TicksGame > 30000 && !DebugSettings.godMode) { }
+            StringBuilder sb = new StringBuilder();
+            int n = 0, pub = 0, priv = 0, pubFree = 0;
+            foreach (SlotGroup g in map.haulDestinationManager.AllGroupsListForReading)
+            {
+                if (g?.parent == null) continue;
+                n++;
+                Pawn o = EconomyPrivateStorageBehavior.OwnerOfGroup(g);
+                int free = 0;
+                foreach (IntVec3 c in g.CellsList)
+                {
+                    if (map.thingGrid.ThingsListAt(c).Any(x => x.def.category == ThingCategory.Item) == false) free++;
+                }
+                if (o == null) { pub++; if (free > 0) pubFree++; }
+                else priv++;
+                if (n <= 12)
+                {
+                    bool acceptsSilver = false;
+                    try
+                    {
+                        StorageSettings ss = null;
+                        Building_Storage bs = g.parent as Building_Storage;
+                        if (bs != null) ss = bs.GetStoreSettings();
+                        else
+                        {
+                            Zone_Stockpile zp = g.parent as Zone_Stockpile;
+                            if (zp != null) ss = zp.GetStoreSettings();
+                        }
+                        if (ss != null) acceptsSilver = ss.AllowedToAccept(ThingDefOf.Silver);
+                    }
+                    catch { }
+                    sb.Append("\n#").Append(n).Append(' ').Append((g.parent as Thing)?.LabelShort ?? g.parent.ToString())
+                      .Append(" 主=").Append(o == null ? "公共" : o.LabelShort)
+                      .Append(" 空=").Append(free).Append('/').Append(g.CellsList.Count)
+                      .Append(" 收银=").Append(acceptsSilver ? "是" : "否");
+                }
+            }
+            Log.Message("[DSH-ECONOMY] 存放组诊断：共 " + n + "，公共 " + pub + "（其中有空位 " + pubFree + "），私有 " + priv + sb);
+        }
 
         public EconomyRealEstate(Game game)
         {
@@ -68,7 +117,20 @@ namespace DshEconomy
             if (changed) InvalidateCells();
         }
 
-        private void Sanitize()
+        /// <summary>把所有存储建筑的所有权收回公共（关闭容器出售时用）。</summary>
+        public int ClearAllBuildingOwners()
+        {
+            int n = buildings != null ? buildings.Count : 0;
+            if (n > 0)
+            {
+                buildings.Clear();
+                buildingOwners.Clear();
+                InvalidateCells();
+            }
+            return n;
+        }
+
+        public void Sanitize()
         {
             if (zones == null) zones = new List<Zone>();
             if (owners == null) owners = new List<Pawn>();
@@ -133,6 +195,68 @@ namespace DshEconomy
         }
 
         /// <summary>这个格子在不在某个私有仓库里；在的话返回它的主人。</summary>
+        /// <summary>把地图上每个储物建筑都列出来（不管有没有登记归属），排查"少认一个箱子"。</summary>
+        public static void DumpStorages(Map map)
+        {
+            if (map == null) return;
+            try
+            {
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                int n = 0;
+                foreach (Building_Storage st in map.listerBuildings.AllBuildingsColonistOfClass<Building_Storage>())
+                {
+                    if (st == null) continue;
+                    n++;
+                    Pawn o = OwnerOfBuilding(st);
+                    SlotGroup g = st.GetSlotGroup();
+                    bool allowsSilver = false;
+                    try { allowsSilver = st.GetStoreSettings().AllowedToAccept(ThingDefOf.Silver); } catch { }
+                    int freeGroups = 0;
+                    try
+                    {
+                        SlotGroup sg = st.GetSlotGroup();
+                        if (sg != null) freeGroups = sg.CellsList.Count(c => !c.GetThingList(map).Any(x => x.def == ThingDefOf.Silver));
+                    }
+                    catch { }
+                    sb.Append("\n  #").Append(n).Append(" ").Append(st.LabelShort)
+                      .Append(" (").Append(st.def.defName).Append(")")
+                      .Append(" 主=").Append(o == null ? "公共" : o.LabelShort)
+                      .Append(" 组=").Append(g == null ? "无" : g.CellsList.Count.ToString())
+                      .Append(" 收银=").Append(allowsSilver ? "是" : "否").Append(" 空位=").Append(freeGroups)
+                      .Append(" 尺寸=").Append(st.def.size.x).Append("x").Append(st.def.size.z);
+                }
+                Log.Message("[DSH-ECONOMY] 储物建筑清点：共 " + n + " 个" + sb);
+            }
+            catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 清点失败：" + e.Message); }
+        }
+
+        /// <summary>只读：检查每个储物建筑登记的归属，与它占据格子的"格子主人"是否一致。</summary>
+        public static void CellOwnerAudit(Map map)
+        {
+            if (map == null || map.listerBuildings == null) return;
+            foreach (Building_Storage st in map.listerBuildings.AllBuildingsColonistOfClass<Building_Storage>())
+            {
+                if (st == null) continue;
+                Pawn declared = OwnerOfBuilding(st);
+                int cells = 0, mismatch = 0, ownedCells = 0;
+                Pawn sample = null;
+                SlotGroup g = st.GetSlotGroup();
+                List<IntVec3> list = new List<IntVec3>();
+                if (g != null) list.AddRange(g.CellsList);
+                else foreach (IntVec3 cc in st.OccupiedRect().Cells) list.Add(cc);
+                for (int i = 0; i < list.Count; i++)
+                {
+                    cells++;
+                    Pawn cellOwner = OwnerAtCell(map, list[i]);
+                    if (cellOwner != null) { ownedCells++; if (sample == null) sample = cellOwner; }
+                    if (cellOwner != declared) mismatch++;
+                }
+                Log.Message("[CELLCHK] " + st.LabelShort + " 登记=" + (declared == null ? "公共" : declared.LabelShort)
+                    + " 格=" + cells + " 有主格=" + ownedCells + " 不一致=" + mismatch
+                    + (sample != null ? " 例=" + sample.LabelShort : ""));
+            }
+        }
+
         public static Pawn OwnerAtCell(Map map, IntVec3 cell)
         {
             if (map == null) return null;
@@ -217,10 +341,18 @@ namespace DshEconomy
             return n;
         }
 
+        /// <summary>手动把某个箱子设为“可购买”时，允许这次操作绕过全局默认关闭。</summary>
+        public static void ForceEnableSale()
+        {
+            EconomyRealEstate inst = Inst;
+            if (inst != null) inst.containerSaleEnabled = true;
+        }
+
         public static bool IsForSale(Building b)
         {
             EconomyRealEstate inst = Inst;
             if (inst == null || b == null) return false;
+            if (!inst.containerSaleEnabled) return false;   // 默认不出售容器
             return !inst.notForSale.Contains(b);
         }
 
@@ -252,6 +384,20 @@ namespace DshEconomy
             for (int i = 0; i < inst.buildings.Count; i++)
             {
                 if (inst.buildings[i] == b) { index = i; break; }
+            }
+
+            Pawn previous = index >= 0 ? inst.buildingOwners[index] : null;
+            if (previous != null && previous != owner)
+            {
+                // 容器被社会化/转手：原主人掉心情 + 工作满意度
+                try
+                {
+                    MemoryThoughtHandler mem = previous.needs?.mood?.thoughts?.memories;
+                    if (mem != null) mem.TryGainMemory(ThoughtDef.Named("DshEco_PropertyConfiscated"), null);
+                    EconomySatisfactionEvents.Add(previous, "容器所有权被社会化（" + b.LabelShort + "）", -3f, 5);
+                    Log.Message("[DSH-ECONOMY] 容器社会化：" + previous.LabelShort + " 失去 " + b.LabelShort);
+                }
+                catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 容器社会化心情失败：" + e.Message); }
             }
 
             if (owner == null)
@@ -339,6 +485,7 @@ namespace DshEconomy
             Scribe_Collections.Look(ref zones, "dsh_zones", LookMode.Reference);
             Scribe_Collections.Look(ref owners, "dsh_zoneOwners", LookMode.Reference);
             Scribe_Collections.Look(ref notForSale, "dsh_notForSale", LookMode.Reference);
+            Scribe_Values.Look(ref containerSaleEnabled, "dsh_containerSale", false);
             Scribe_Collections.Look(ref buildings, "dsh_storeBuildings", LookMode.Reference);
             Scribe_Collections.Look(ref buildingOwners, "dsh_storeBuildingOwners", LookMode.Reference);
             Sanitize();

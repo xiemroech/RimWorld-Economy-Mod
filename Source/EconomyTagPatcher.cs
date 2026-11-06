@@ -555,6 +555,7 @@ namespace DshEconomy
                 bool cardPatched = NeedsSatisfactionPatch.PatchCard(harmony);
                 Log.Message("[DSH-ECONOMY] 角色卡满意度行：" + (cardPatched ? "已挂载" : "不可用"));
 
+
                 bool inspectPatched = EconomyInspectPatch.Patch(harmony);
                 Log.Message("[DSH-ECONOMY] 信息栏满意度：" + (inspectPatched ? "已挂载" : "不可用"));
 

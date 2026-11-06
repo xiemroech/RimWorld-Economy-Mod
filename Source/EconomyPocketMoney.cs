@@ -92,7 +92,19 @@ namespace DshEconomy
             if (excess <= 0) return;
 
             IntVec3 cell;
-            if (!FindFreeCell(p, map, out cell)) return;
+            if (!FindFreeCell(p, map, out cell))
+            {
+                // 自己仓库塞不下：超额的零钱直接"去标签"变回公共，交给公共白银回收逻辑搬走/丢下，
+                // 否则这叠私有白银会永远留在背包里，既不算工资也没人处理
+                Thing free = stack.SplitOff(Mathf.Min(excess, stack.stackCount));
+                if (free != null)
+                {
+                    EconomyPrivate.SetPrivate(free, null);
+                    Log.Message("[DSH-ECONOMY] 零钱超额：" + p.LabelShort + " 身上 " + carried + " 银超过上限 "
+                                + limit + "，且私有仓库没空格，" + free.stackCount + " 银转回公共");
+                }
+                return;
+            }
 
             Thing part = stack.SplitOff(Mathf.Min(excess, stack.stackCount));
             if (part == null) return;

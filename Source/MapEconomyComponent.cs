@@ -374,6 +374,8 @@ namespace DshEconomy
         }
 
         private bool silverReapplied;
+        private int lastTagPrune = -99999;
+        private int lastEstateCheck = -99999;
         private int pawnCursor;
 
         /// <summary>每次只处理一小片殖民者：紧急买食物 + 睡觉采样（约 1000 tick 轮完一轮）。</summary>
@@ -442,6 +444,35 @@ namespace DshEconomy
                 EconomyMarket.Tick();
                 EconomyPasteDispenser.StockTick(map);
                 try { EconomyPublicSilver.Tick(map); } catch (System.Exception e) { EcoLog.WarnOnce("publicsilver", e); }
+                try
+                {
+                    if (now - lastEstateCheck >= 2500)
+                    {
+                        lastEstateCheck = now;
+                        EconomyRealEstate estate = Current.Game.GetComponent<EconomyRealEstate>();
+                        if (estate != null) estate.Sanitize();
+                try { PrivateStorageHaulPatch.TickLog(map); } catch { }
+                if (EconomySelfCheck.PendingDump && Find.TickManager != null && Find.TickManager.TicksGame > 120)
+                {
+                    EconomySelfCheck.PendingDump = false;
+                    try { EconomySelfCheck.Run(map); } catch { }
+                    try { EconomyRealEstate.Diagnose(map); } catch { }
+                    try { EconomyRealEstate.DumpStorages(map); } catch { }
+                    try { EconomyRealEstate.CellOwnerAudit(map); } catch { }
+                }
+                    }
+                }
+                catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 产权清理失败：" + e.Message); }
+                try
+                {
+                    if (now - lastTagPrune >= 2500)
+                    {
+                        lastTagPrune = now;
+                        int cleaned = EconomyPrivate.PruneEmptyTags(map);
+                        if (cleaned > 0) Log.Message("[DSH-ECONOMY] 组件表修复：重建 " + cleaned + " 个物品的 comps");
+                    }
+                }
+                catch (System.Exception e) { EcoLog.WarnOnce("tagprune", e); }
             EconomyDepreciation.Tick(map);
             EconomyRestock.Tick(map);
                 EconomyPrivateStorageBehavior.ValidatePrivatePlacement(map);

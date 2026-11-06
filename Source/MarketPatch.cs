@@ -28,6 +28,9 @@ namespace DshEconomy
             if (!__result || item == null || __instance == null) return;
             Pawn_InventoryTracker inv = __instance.Owner as Pawn_InventoryTracker;
             if (inv == null || inv.pawn == null) return;
+
+            // 注意：OnInventoryAdded 会 remove 掉 pending，所以必须在它之前判断
+            bool wasPurchase = EconomyMarket.HasPending(inv.pawn);
             EconomyMarket.OnInventoryAdded(inv.pawn, item);
 
             // 公共白银进了背包：登记一下，让搬运逻辑把它送回仓库（或丢下）
@@ -38,7 +41,7 @@ namespace DshEconomy
 
             // 只给"市场购买"打私有：任务奖励、拾取、搬运不该被误标。
             if (item.def != null && inv.pawn.IsColonist
-                && EconomyMarket.HasPending(inv.pawn)
+                && wasPurchase
                 && EconomyPrivate.OwnerOf(item) == null)
             {
                 EconomyPrivate.SetPrivate(item, inv.pawn);

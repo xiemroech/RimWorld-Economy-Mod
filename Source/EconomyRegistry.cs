@@ -101,6 +101,27 @@ namespace DshEconomy
                 samples.Remove(containerCat);
             }
 
+            // CE 弹药：一律算「武器」类（弹药不是武器，但属于武器系统）
+            EconomyCategoryDef weaponCat = null;
+            for (int i = 0; i < categories.Count; i++)
+            {
+                if (categories[i] != null && categories[i].defName == "DshEco_Weapon") { weaponCat = categories[i]; break; }
+            }
+            if (weaponCat != null)
+            {
+                List<ThingDef> allDefs2 = DefDatabase<ThingDef>.AllDefsListForReading;
+                for (int i = 0; i < allDefs2.Count; i++)
+                {
+                    ThingDef d = allDefs2[i];
+                    if (d == null || !CEAmmo.IsAmmoDef(d)) continue;
+                    EconomyCategoryDef prev;
+                    if (lookup.TryGetValue(d, out prev) && prev != null && prev != weaponCat)
+                        byCategory[prev].Remove(d);
+                    lookup[d] = weaponCat;
+                    if (!byCategory[weaponCat].Contains(d)) byCategory[weaponCat].Add(d);
+                }
+            }
+
             Built = true;
             Action act = Rebuilt;
             if (act != null) act();
