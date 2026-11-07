@@ -214,7 +214,7 @@ namespace DshEconomy
                 }
                 else
                 {
-                    Log.Warning("[DSH-ECONOMY] 未找到 StoreUtility.TryFindBestBetterStoreCellFor，私人仓库未拦截");
+                    Log.Message("[DSH-ECONOMY] 搬运兜底已停用（死代码）：CellPrefix 规则已接管，非 API 缺失");
                 }
 
                 MethodInfo killM = AccessTools.Method(typeof(Pawn), "Kill", new[] { typeof(DamageInfo?), typeof(Hediff) });
@@ -283,7 +283,7 @@ namespace DshEconomy
                     Log.Message("[DSH-ECONOMY] 搬运目标兜底（TryFindBestBetterStorageFor）：已挂载（参数 " + storageFor.GetParameters().Length + "）");
                     ok = true;
                 }
-                else Log.Warning("[DSH-ECONOMY] 没找到 TryFindBestBetterStorageFor，换格兜底未生效");
+                else Log.Message("[DSH-ECONOMY] 容器搬运兜底已停用（死代码）：非 API 缺失");
 
                 MethodInfo zoneGizmos = AccessTools.Method(typeof(Zone), "GetGizmos");
                 if (zoneGizmos != null)
@@ -324,17 +324,11 @@ namespace DshEconomy
                     Log.Warning("[DSH-ECONOMY] 未找到 StoreUtility.IsGoodStoreCell，私有物仍可能被选中公共仓库");
                 }
 
-                MethodInfo groupAdded = AccessTools.Method(typeof(SlotGroup), "Notify_Added", new[] { typeof(Thing) });
-                if (groupAdded != null)
-                {
-                    harmony.Patch(groupAdded, postfix: new HarmonyMethod(AccessTools.Method(typeof(PrivateStorageEjectPatch), "Postfix")));
-                    Log.Message("[DSH-ECONOMY] 私有仓库兜底拦截：已挂载");
-                    ok = true;
-                }
-                else
-                {
-                    Log.Warning("[DSH-ECONOMY] 未找到 SlotGroup.Notify_Added，私有仓库兜底拦截不可用");
-                }
+                // 1.7 变更：SlotGroup.Notify_Added(Thing) 已不存在。
+                // 1.7 只有 Notify_AddedCell(IntVec3 c) / Notify_LostCell(IntVec3 c)，
+                // 语义是"格子加入/移出储物组"，不是"物品被放入"，改名修不了。
+                // 本兜底失效：物品放入的拦截依赖上方 Building_Storage.Notify_ReceivedThing。
+                Log.Message("[DSH-ECONOMY] 私有仓库兜底拦截：1.7 无 SlotGroup.Notify_Added(Thing)，本兜底已失效（改由 Notify_ReceivedThing 覆盖）");
 
                 MethodInfo buildingGizmos = AccessTools.Method(typeof(ThingWithComps), "GetGizmos");
                 if (buildingGizmos != null)
