@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -26,8 +26,20 @@ namespace DshEconomy
                 return false;
             }
 
-            // 自己的私有物：不交给原版挑仓库（它会选公共仓库 → 被弹出 → 再搬的循环），
-            // 直接指定自己去名下的空格子；没有空格就不搬。
+            // 自己的私有物：优先放进自己名下的 mod 内部容器；
+            // 这类容器不能用 HaulToCell 的单格判定，必须走 HaulToContainer。
+            Thing container;
+            if (EconomyPrivateStorageBehavior.FindOwnContainer(p, t, out container))
+            {
+                Job containerJob = HaulAIUtility.HaulToContainerJob(p, t, container);
+                if (containerJob != null)
+                {
+                    __result = containerJob;
+                    return false;
+                }
+            }
+
+            // 没有可用的内部容器，再找普通储存格。
             IntVec3 cell;
             if (!EconomyPrivateStorageBehavior.FindOwnCell(p, t, out cell))
             {

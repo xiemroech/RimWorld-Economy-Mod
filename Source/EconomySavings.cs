@@ -157,13 +157,40 @@ namespace DshEconomy
             Deposit(p, add);
         }
 
-        /// <summary>存款目标：应急金 150 与"想买的大件价格"取大者；没有大件时至少存 150。</summary>
+        /// <summary>这个人一天大概能挣多少银（用于算应急金）。</summary>
+        public static float DailyWage(Pawn p, Map map)
+        {
+            if (p == null || map == null) return 0f;
+            MapEconomyComponent comp = map.GetComponent<MapEconomyComponent>();
+            if (comp == null || comp.wages == null || !comp.wages.enabled) return 0f;
+            const float WorkdaysPerDay = 0.42f;   // 一天实际干活约 10 小时
+            float value = comp.wages.LaborDayValueFor(p);
+            float share = comp.wages.ShareFor(p);
+            float cap = comp.wages.CapFor(p);
+            return UnityEngine.Mathf.Min(value * share, cap) * WorkdaysPerDay;
+        }
+
+        /// <summary>应急金 = 3 天工资（实时跟随个人工资参数），下限 150、上限 3000。</summary>
+        public static int EmergencyTarget(Pawn p, Map map)
+        {
+            return UnityEngine.Mathf.Clamp(UnityEngine.Mathf.RoundToInt(3f * DailyWage(p, map)), ReserveSilver, 3000);
+        }
+
+        /// <summary>存款目标：应急金（3 天工资）、想买的大件、以及"没仓库时要买的容器"三者取大。</summary>
         public static int TargetOf(Pawn p, Map map)
         {
-            int reserve = ReserveSilver;
+            int target = EmergencyTarget(p, map);
+
+            // 没有储物空间 → 攒钱买容器（有空余就不买新的）
+            if (p != null && map != null && EconomyConsumption.NeedsContainer(p, map))
+            {
+                ThingDef ctd = EconomyConsumption.CheapestForSaleContainer(map);
+                if (ctd != null) target = UnityEngine.Mathf.Max(target, GoalPrice(ctd, map));
+            }
+
             ThingDef g = Goal(p);
-            int price = g != null ? GoalPrice(g, map) : 0;
-            return UnityEngine.Mathf.Max(reserve, price);
+            if (g != null) target = UnityEngine.Mathf.Max(target, GoalPrice(g, map));
+            return target;
         }
 
         /// <summary>购买计划的一行文字（给界面 tooltip / 明细窗口用）。</summary>
@@ -178,7 +205,20 @@ namespace DshEconomy
 
             // 当下必要：穿的
             int apparel = CountCategory(p, "DshEco_Apparel");
-            parts.Add("衣物 " + apparel + "/3 件");
+            parts.Add("衣物 " + apparel + "/3 件（缺层 " + EconomyItemStock.MissingLayers(p) + "）");
+
+            if (EconomyConsumption.NeedsContainer(p, map))
+            {
+                ThingDef box = EconomyConsumption.CheapestForSaleContainer(map);
+                parts.Add(box != null
+                    ? "容器：没地方放了，攒钱买 " + box.LabelCap + "（" + GoalPrice(box, map) + " 银）"
+                    : "容器：没地方放了，但地图上没有在售容器");
+            }
+            else
+            {
+                parts.Add("容器：还有空余，不买新的");
+            }
+            parts.Add("应急金 " + Of(p) + "/" + EmergencyTarget(p, map) + " 银（3 天工资）");
 
             ThingDef g = Goal(p);
             if (g != null)
@@ -191,7 +231,7 @@ namespace DshEconomy
             }
             else
             {
-                parts.Add("无大件目标（仓库里没有值得攒的东西），只留应急金 " + Of(p) + "/" + ReserveSilver + " 银");
+                parts.Add("无大件目标（仓库里没有值得攒的东西）");
             }
             return string.Join("\n", parts.ToArray());
         }
@@ -212,6 +252,11 @@ namespace DshEconomy
         public static ThingDef PickGoal(Pawn p, Map map)
         {
             if (p == null || map == null) return null;
+            if (EconomyConsumption.NeedsContainer(p, map))
+            {
+                ThingDef box = EconomyConsumption.CheapestForSaleContainer(map);
+                if (box != null) return box;
+            }
             if (weaponMissing(p, map)) return CheapestIn("DshEco_Weapon", map);
             if (CountCategory(p, "DshEco_Apparel") < 3) return CheapestIn("DshEco_Apparel", map);
             return null;

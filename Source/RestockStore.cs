@@ -133,12 +133,7 @@ namespace DshEconomy
         public static int TotalSlots(Building_Storage st)
         {
             if (st == null) return 0;
-            int cells = 0;
-            try { cells = st.AllSlotCellsList().Count; } catch { }
-            if (cells <= 0) return 0;
-            int perCell = 1;
-            try { if (st.def != null && st.def.building != null) perCell = Mathf.Max(1, st.def.building.maxItemsInCell); } catch { }
-            return cells * perCell;
+            return Mathf.Max(0, ContainerUtil.CapacitySlots(st));
         }
 
         /// <summary>
@@ -205,7 +200,7 @@ namespace DshEconomy
             if (r.exactItems > 0) return r.exactItems;
             int slots = SlotsFor(st, r.pct);
             if (slots <= 0) return 0;
-            return slots * ItemsPerSlot(st, r.def);
+            return Mathf.Max(1, slots * ItemsPerSlot(st, r.def));
         }
 
         /// <summary>只查不建，给补货逻辑用。</summary>
@@ -213,12 +208,9 @@ namespace DshEconomy
         public static int CapacityItems(Building_Storage st, ThingDef def)
         {
             if (st == null || def == null) return 0;
-            int cells = 0;
-            try { cells = st.AllSlotCellsList().Count; } catch { }
-            if (cells <= 0) return 0;
-            int perCell = 1;
-            try { if (st.def != null && st.def.building != null) perCell = Mathf.Max(1, st.def.building.maxItemsInCell); } catch { }
-            return Mathf.Max(1, cells * perCell * Mathf.Max(1, def.stackLimit));
+            int slots = ContainerUtil.CapacitySlots(st);
+            if (slots <= 0) return 0;
+            return Mathf.Max(1, slots * ItemsPerSlot(st, def));
         }
 
         /// <summary>把"百分比 / 自动平分"解成件数阈值。</summary>

@@ -4,6 +4,7 @@ using System.Reflection;
 using HarmonyLib;
 using RimWorld;
 using Verse;
+using Verse.AI;
 
 namespace DshEconomy
 {
@@ -206,7 +207,7 @@ namespace DshEconomy
                 bool ok = false;
 
                 MethodInfo store = AccessTools.Method(typeof(StoreUtility), "TryFindBestBetterStoreCellFor");
-                if (store != null)
+                if (false && store != null)
                 {
                     harmony.Patch(store, postfix: new HarmonyMethod(AccessTools.Method(typeof(StoreUtilityPrivatePatch), "Postfix")));
                     ok = true;
@@ -215,6 +216,74 @@ namespace DshEconomy
                 {
                     Log.Warning("[DSH-ECONOMY] 未找到 StoreUtility.TryFindBestBetterStoreCellFor，私人仓库未拦截");
                 }
+
+                MethodInfo killM = AccessTools.Method(typeof(Pawn), "Kill", new[] { typeof(DamageInfo?), typeof(Hediff) });
+                if (killM != null)
+                {
+                    harmony.Patch(killM, postfix: new HarmonyMethod(AccessTools.Method(typeof(EconomyInheritance), "Postfix")));
+                    Log.Message("[DSH-ECONOMY] 死亡继承/充公：已挂载");
+                    ok = true;
+                }
+
+                MethodInfo haulJobM = null;
+                foreach (MethodInfo mi in typeof(HaulAIUtility).GetMethods(BindingFlags.Public | BindingFlags.Static))
+                {
+                    if (mi.Name == "HaulToStorageJob") { haulJobM = mi; break; }
+                }
+                MethodInfo dumpM = null;
+                foreach (MethodInfo mi in typeof(HaulAIUtility).GetMethods(BindingFlags.Public | BindingFlags.Static))
+                {
+                    if (mi.Name == "HaulToStorageJob") { dumpM = mi; break; }
+                }
+                if (dumpM != null)
+                {
+                    harmony.Patch(dumpM, postfix: new HarmonyMethod(AccessTools.Method(typeof(HaulCountPatch), "DumpOnFailPostfix")));
+                    Log.Message("[DSH-ECONOMY] 搬运失败诊断（只读）：已挂载");
+                    ok = true;
+                }
+
+                if (haulJobM != null)
+                {
+                    harmony.Patch(haulJobM, postfix: new HarmonyMethod(AccessTools.Method(typeof(HaulJobFallback), "Postfix")));
+                    Log.Message("[DSH-ECONOMY] 手动搬运换格兜底：已挂载");
+                    ok = true;
+                }
+
+                if (false && haulJobM != null)
+                {
+                    harmony.Patch(haulJobM, postfix: new HarmonyMethod(AccessTools.Method(typeof(HaulCountPatch), "Postfix")));
+                    Log.Message("[DSH-ECONOMY] 搬运数量按负重封顶：已挂载");
+                    ok = true;
+                }
+
+                MethodInfo acceptM = AccessTools.Method(typeof(StorageSettings), "AllowedToAccept", new[] { typeof(Thing) });
+                if (acceptM != null)
+                {
+                    harmony.Patch(acceptM, postfix: new HarmonyMethod(AccessTools.Method(typeof(StorageSettingsOwnerIndex), "Postfix")));
+                    Log.Message("[DSH-ECONOMY] 私有容器只接受物主的东西（原版过滤器层切换）：已挂载");
+                    ok = true;
+                }
+
+                MethodInfo curPrio = AccessTools.Method(typeof(StoreUtility), "CurrentStoragePriorityOf");
+                if (curPrio != null)
+                {
+                    harmony.Patch(curPrio, postfix: new HarmonyMethod(AccessTools.Method(typeof(StorePriorityGuard), "Postfix")));
+                    Log.Message("[DSH-ECONOMY] 搬运优先级下限修正（先扫到私有容器也切公共）：已挂载");
+                    ok = true;
+                }
+
+                MethodInfo storageFor = null;
+                foreach (MethodInfo mi in typeof(StoreUtility).GetMethods(BindingFlags.Public | BindingFlags.Static))
+                {
+                    if (mi.Name == "TryFindBestBetterStorageFor") { storageFor = mi; break; }
+                }
+                if (false && storageFor != null)
+                {
+                    harmony.Patch(storageFor, postfix: new HarmonyMethod(AccessTools.Method(typeof(StoreUtilityStorageForPatch), "Postfix")));
+                    Log.Message("[DSH-ECONOMY] 搬运目标兜底（TryFindBestBetterStorageFor）：已挂载（参数 " + storageFor.GetParameters().Length + "）");
+                    ok = true;
+                }
+                else Log.Warning("[DSH-ECONOMY] 没找到 TryFindBestBetterStorageFor，换格兜底未生效");
 
                 MethodInfo zoneGizmos = AccessTools.Method(typeof(Zone), "GetGizmos");
                 if (zoneGizmos != null)
@@ -302,6 +371,7 @@ namespace DshEconomy
                     harmony.Patch(spawn, postfix: new HarmonyMethod(AccessTools.Method(typeof(EconomyPrivateStorageBehavior), "SpawnPostfix")));
                     harmony.Patch(despawn, prefix: new HarmonyMethod(AccessTools.Method(typeof(StockIncrementalPatch), "DespawnPrefix")));
                     harmony.Patch(despawn, prefix: new HarmonyMethod(AccessTools.Method(typeof(EconomyPrivateStorageBehavior), "DespawnPrefix")));
+                    harmony.Patch(despawn, prefix: new HarmonyMethod(AccessTools.Method(typeof(PublicStorageLeaveDiag), "Prefix")));
                     Log.Message("[DSH-ECONOMY] 增量库存统计：已挂载");
                     return true;
                 }

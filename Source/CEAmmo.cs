@@ -169,6 +169,54 @@ namespace DshEconomy
             return 0;
         }
 
+        private static Pawn mapPawn;
+        private static int mapTick = -99999;
+        private static Dictionary<ThingDef, int> mapCache = new Dictionary<ThingDef, int>();
+
+        /// <summary>CE 装备预设里要求的物品 → 件数（没装 CE 或没预设时为空表）。</summary>
+        public static Dictionary<ThingDef, int> LoadoutMap(Pawn p)
+        {
+            if (p == null || !EnsureCE() || tUtil == null) return EmptyLoadout;
+            int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+            if (p == mapPawn && now - mapTick < 300) return mapCache;
+            mapPawn = p; mapTick = now;
+            mapCache = new Dictionary<ThingDef, int>();
+            try
+            {
+                MethodInfo m = tUtil.GetMethod("GetLoadout", BindingFlags.Public | BindingFlags.Static);
+                if (m == null) return mapCache;
+                object loadout = m.Invoke(null, new object[] { p });
+                if (loadout == null) return mapCache;
+                object slots = GetMember(loadout, "Slots");
+                IEnumerable en = slots as IEnumerable;
+                if (en == null) return mapCache;
+                foreach (object slot in en)
+                {
+                    ThingDef def = GetMember(slot, "thingDef") as ThingDef;
+                    if (def == null) continue;
+                    object c = GetMember(slot, "count");
+                    int n = c is int ? (int)c : 1;
+                    if (n <= 0) continue;
+                    mapCache[def] = mapCache.TryGetValue(def, out int old) ? old + n : n;
+                }
+            }
+            catch { }
+            return mapCache;
+        }
+
+        private static readonly Dictionary<ThingDef, int> EmptyLoadout = new Dictionary<ThingDef, int>();
+
+        /// <summary>预设里有没有这个类别的东西（用于"按预设买"的判断）。</summary>
+        public static bool LoadoutHasCategory(Pawn p, string categoryDefName)
+        {
+            foreach (ThingDef d in LoadoutMap(p).Keys)
+            {
+                EconomyCategoryDef c = EconomyRegistry.CategoryOf(d);
+                if (c != null && c.defName == categoryDefName) return true;
+            }
+            return false;
+        }
+
         private static object GetMember(object obj, string name)
         {
             if (obj == null) return null;

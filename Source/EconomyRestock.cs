@@ -34,6 +34,8 @@ namespace DshEconomy
             {
                 if (jobs >= MaxJobsPerPass) break;
                 if (st == null || st.Destroyed) continue;
+                // 私有容器不参与公共补货：谁的东西谁自己搬（否则就是"公共货进私有箱"）
+                if (EconomyRealEstate.OwnerOfBuilding(st) != null) continue;
                 // 市场摊位也走补货：卖掉的货由搬运工从公共库存补回去
 
                 RestockSettings comp = RestockStore.Lookup(st);
@@ -69,6 +71,19 @@ namespace DshEconomy
                 Pawn pawn = FindHauler(map, source, st);
                 if (pawn == null) continue;
 
+                // mod 容器：容量与目标都在 inner ThingOwner 里，必须用 HaulToContainerJob，不能指单格
+                ThingOwner innerBox = ContainerUtil.InnerOf(st);
+                if (innerBox != null)
+                {
+                    if (ContainerUtil.CanAcceptCount(innerBox, rule.def) <= 0) continue;
+                    Job jb = HaulAIUtility.HaulToContainerJob(pawn, source, st);
+                    if (jb == null) continue;
+                    int canTake = Mathf.Max(1, ContainerUtil.CanAcceptCount(innerBox, rule.def));
+                    jb.count = Mathf.Clamp(Mathf.Min(need, canTake), 1, source.stackCount);
+                    if (pawn.jobs.TryTakeOrderedJob(jb, JobTag.Misc)) jobs++;
+                    continue;
+                }
+
                 IntVec3 cell = FindCell(st, rule.def, pawn);
                 if (!cell.IsValid) continue;
 
@@ -86,6 +101,31 @@ namespace DshEconomy
         {
             int jobs = 0;
             int tries = 0;
+
+            // mod 容器：不看格子，直接补进去
+            ThingOwner innerFill = ContainerUtil.InnerOf(st);
+            if (innerFill != null)
+            {
+                foreach (Thing t in map.listerThings.AllThings)
+                {
+                    if (jobs + already >= MaxJobsPerPass || jobs >= DefaultFillStacks) break;
+                    if (t == null || t.Destroyed || t.def == null || t.def.category != ThingCategory.Item) continue;
+                    if (EconomyPrivate.OwnerOf(t) != null) continue;
+                    if (InStorage(t, st)) continue;
+                    if (t.IsForbidden(Faction.OfPlayer) || t.IsBurning()) continue;
+                    if (EconomyRealEstate.OwnerOfBuilding(st) != null) break;
+                    if (!ContainerUtil.CanAccept(innerFill, t)) continue;
+                    Pawn hauler = FindHauler(map, t, st);
+                    if (hauler == null) continue;
+                    Job jb = HaulAIUtility.HaulToContainerJob(hauler, t, st);
+                    if (jb == null) continue;
+                    int canFill = Mathf.Max(1, ContainerUtil.CountCanAccept(innerFill, t));
+                    jb.count = Mathf.Min(t.stackCount, canFill);
+                    if (hauler.jobs.TryTakeOrderedJob(jb, JobTag.Misc)) jobs++;
+                }
+                return jobs;
+            }
+
             foreach (IntVec3 cell in st.AllSlotCellsList())
             {
                 if (jobs + already >= MaxJobsPerPass) break;
@@ -113,6 +153,17 @@ namespace DshEconomy
         public static int CountIn(Building_Storage st, ThingDef def)
         {
             int n = 0;
+            ThingOwner innerCount = ContainerUtil.InnerOf(st);
+            if (innerCount != null)
+            {
+                try
+                {
+                    foreach (Thing t0 in innerCount)
+                        if (t0 != null && !t0.Destroyed && t0.def == def) n += t0.stackCount;
+                }
+                catch { }
+                return n;
+            }
             SlotGroup group = st.GetSlotGroup();
             if (group == null) return 0;
             foreach (Thing t in group.HeldThings)

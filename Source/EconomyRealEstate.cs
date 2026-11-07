@@ -192,6 +192,7 @@ namespace DshEconomy
         public static void InvalidateCells()
         {
             cellCache.Clear();
+            try { StorageSettingsOwnerIndex.Rebuild(Find.CurrentMap); } catch { }
         }
 
         /// <summary>这个格子在不在某个私有仓库里；在的话返回它的主人。</summary>
@@ -501,21 +502,40 @@ namespace DshEconomy
     /// <summary>搬运时拦下"私人仓库"：别人的东西不进、别人也不往里搬。</summary>
     public static class StoreUtilityPrivatePatch
     {
-        public static void Postfix(Thing t, Pawn carrier, ref IntVec3 foundCell, ref bool __result)
+        public static void Postfix(Thing t, Pawn carrier, Map map, ref IntVec3 foundCell, ref bool __result)
         {
-            if (!__result || t == null || carrier == null) return;
-            Map map = carrier.Map;
-            if (map == null || map.zoneManager == null) return;
+            if (t == null || carrier == null) return;
+            Map cMap = carrier.Map ?? map;
+            if (cMap == null || cMap.zoneManager == null) return;
 
-            Zone zone = map.zoneManager.ZoneAt(foundCell);
-            Pawn zoneOwner = zone != null ? EconomyRealEstate.OwnerOf(zone) : null;
-
-            // 存储建筑（货架/冰箱）的产权
-            if (zoneOwner == null && map.haulDestinationManager != null)
+            if (!__result)
             {
-                SlotGroup group = map.haulDestinationManager.SlotGroupAt(foundCell);
+                // 原版（含产权过滤）找不到格子 → 无视产权再扫一遍，避免"明明有空箱子"
+                IntVec3 any;
+                if (StoreFallback.TryFindAnyCell(t, carrier, cMap, out any))
+                {
+                    foundCell = any;
+                    __result = true;
+                }
+                return;
+            }
+
+            // 与 StoreUtilityPrivatePatch.OwnerAt 保持同一顺序：建筑优先，堆放区其次
+            Pawn zoneOwner = null;
+            if (cMap.haulDestinationManager != null)
+            {
+                SlotGroup group = cMap.haulDestinationManager.SlotGroupAt(foundCell);
                 Building b = group != null ? group.parent as Building : null;
-                if (b != null) zoneOwner = EconomyRealEstate.OwnerOfBuilding(b);
+                if (b != null)
+                {
+                    zoneOwner = EconomyRealEstate.OwnerOfBuilding(b);
+                    if (zoneOwner == null) return;   // 公共货架：就算盖在私有区上也算公共
+                }
+            }
+            if (zoneOwner == null)
+            {
+                Zone zone = cMap.zoneManager.ZoneAt(foundCell);
+                if (zone != null) zoneOwner = EconomyRealEstate.OwnerOf(zone);
             }
 
             if (zoneOwner == null) return;
@@ -523,17 +543,80 @@ namespace DshEconomy
 
             // 私有物品不能进公共仓库，也不能进别人的仓库：
             // 否则小人会把私房钱和私人物品全搬进公共存储区，看起来像"钱没了"。
-            if (itemOwner != null && zoneOwner != itemOwner)
+            bool rejected = false;
+            if (itemOwner != null && zoneOwner != itemOwner) rejected = true;
+            // 私人仓库只收物主自己的东西，且只让物主本人搬运
+            else if (zoneOwner != null && (zoneOwner != itemOwner || zoneOwner != carrier)) rejected = true;
+
+            if (!rejected) return;
+
+            __result = false;
+
+            // 被否掉的这一格只是"扫描时最先遇到的那一格"（很可能是私有容器）。
+            // 真正的做法：继续往后找 —— 换一个能收它的格子（公共格，或物主自己的格）。
+            IntVec3 alt;
+            if (StoreFallback.TryFindAnyCell(t, carrier, cMap, out alt))
             {
-                __result = false;
+                foundCell = alt;
+                __result = true;
                 return;
             }
 
-            // 私人仓库只收物主自己的东西，且只让物主本人搬运
-            if (zoneOwner != null && (zoneOwner != itemOwner || zoneOwner != carrier))
+            if (itemOwner == null)
             {
-                __result = false;
+                IntVec3 pub;
+                if (StoreFallback.TryFindPublicCell(t, carrier, cMap, out pub))
+                {
+                    foundCell = pub;
+                    __result = true;
+                }
             }
+
+            if (!__result) StoreFallback.DumpFailure(t, carrier, cMap);
         }
     }
+
+    /// <summary>
+    /// 手动「优先搬运」和部分搬运路径用的是 TryFindBestBetterStorageFor（不是 ...StoreCellFor），
+    /// 它同样只返回"最优的一个"，被产权跳过后就报"未配置空余的、可到达的储存点"。
+    /// </summary>
+    public static class StoreUtilityStorageForPatch
+    {
+        private static readonly Dictionary<string, int> DiagTick = new Dictionary<string, int>();
+
+        public static void Postfix(Thing t, Pawn carrier, Map map,
+            ref IntVec3 foundCell, ref IHaulDestination haulDestination, ref bool __result)
+        {
+            if (__result) return;
+            if (t == null || carrier == null) return;
+            Map cMap = carrier.Map ?? map;
+            if (cMap == null) return;
+
+            IntVec3 cell;
+            IHaulDestination dest;
+            bool found = StoreFallback.TryFindAnyStorage(t, carrier, cMap, out cell, out dest);
+            if (found)
+            {
+                foundCell = cell;
+                haulDestination = dest;
+                __result = true;
+            }
+
+            // 只读诊断：每次失败/成功各打一行，便于确认兜底到底有没有跑
+            try
+            {
+                string key = t.def.defName;
+                int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+                if (!DiagTick.TryGetValue(key, out int last) || now - last > 600)
+                {
+                    DiagTick[key] = now;
+                    Log.Message("[HAULWHY] 换格兜底 " + (found ? "成功 → " + cell : "失败 " + StoreFallback.Why)
+                        + "（" + t.LabelShort + " ×" + t.stackCount + " 物主="
+                        + (EconomyPrivate.OwnerOf(t) == null ? "公共" : EconomyPrivate.OwnerOf(t).LabelShort)
+                        + " 搬运者=" + carrier.LabelShort + "）");
+                }
+            }
+            catch { }
+        }
+}
 }

@@ -20,11 +20,31 @@ namespace DshEconomy
     /// <summary>储物建筑直接收货时也做一次归属检查（有些路径不走 SlotGroup.Notify_Added）。</summary>
     public static class StorageReceivedEjectPatch
     {
+        private static int lastPublicLog = -99999;
         public static void Postfix(Building_Storage __instance, Thing newItem)
         {
             if (__instance == null || newItem == null || !newItem.Spawned) return;
 
             Pawn owner = EconomyRealEstate.OwnerOfBuilding(__instance);
+
+            // 只读诊断：公共箱收到公共货也打一行，用来定位"公共货被弹出"
+            try
+            {
+                if (owner == null)
+                {
+                    bool allowed = false;
+                    try { allowed = __instance.GetStoreSettings().AllowedToAccept(newItem); } catch { }
+                    int now0 = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+                    if (allowed && now0 - lastPublicLog > 600)
+                    {
+                        lastPublicLog = now0;
+                        Log.Message("[STORCHK] 公共箱 " + __instance.LabelShort + " 收到公共货 "
+                            + newItem.LabelShort + " 允许=是 堆=" + newItem.stackCount);
+                    }
+                }
+            }
+            catch { }
+
             if (owner == null) return;
 
             Pawn itemOwner = EconomyPrivate.OwnerOf(newItem);

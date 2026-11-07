@@ -34,27 +34,38 @@ namespace DshEconomy
             rejSamples.Clear();
         }
 
+        /// <summary>扫描兜底时临时置真：这一趟完全按原版规则找格，不再受产权判定影响。</summary>
+        public static bool Bypass;
+
         public static bool CellPrefix(IntVec3 c, Map map, Thing t, Pawn carrier, ref bool __result)
         {
+            if (Bypass) return true;
             if (t == null || map == null) return true;
             allowCount++;
 
             Pawn storeOwner = OwnerAt(map, c);
 
             // 无主（公共）货物：只能进公共格
+            // 公共货物：只进公共格。私有格一律跳过（继续扫下一格，不判整条任务失败）。
             if (EconomyPrivate.OwnerOf(t) == null)
             {
                 if (storeOwner == null) return true;
                 rejPrivateCell++;
-                string k0 = "私有格(" + (storeOwner != null ? storeOwner.LabelShort : "?") + ")不收公共货(" + t.LabelShort + ")";
+                string k0 = "公共格已满/被跳过：私有格(" + storeOwner.LabelShort + ")不收公共货(" + t.LabelShort + ")";
                 rejSamples[k0] = rejSamples.TryGetValue(k0, out int v0) ? v0 + 1 : 1;
                 __result = false;
                 return false;
             }
 
-            // 私有物进公共格：允许。原版只会试"最优的那一格"，一旦这里否掉，
-            // 任务就直接失败、不会退回去试别的格子——皮革、食材卡住都是这么来的。
-            if (storeOwner == null) return true;
+            // 私有物进公共格：禁止。私有财产只进物主自己的仓位。
+            if (storeOwner == null)
+            {
+                rejPrivateItem++;
+                string k1 = "私有物(" + t.LabelShort + ")不进公共格";
+                rejSamples[k1] = rejSamples.TryGetValue(k1, out int v1) ? v1 + 1 : 1;
+                __result = false;
+                return false;
+            }
 
             // 私有格子：只收物主自己的私有物品
             if (EconomyPrivate.OwnerOf(t) == storeOwner) return true;
@@ -65,9 +76,10 @@ namespace DshEconomy
             return false;
         }
 
-        public static bool Prefix(Pawn p, Thing t, ref bool __result)
+        public static bool Prefix(Pawn p, Thing t, bool forced, ref bool __result)
         {
             if (p == null || t == null || !t.Spawned) return true;
+            if (forced) return true;
             Map map = p.Map;
             if (map == null) return true;
 
@@ -86,6 +98,16 @@ namespace DshEconomy
             // 这样"搜索阶段排除掉的格子"和"最终会被否决的格子"永远一致，
             // 不会出现"选中了私有格 → 被否决 → 整条任务失败、不回头试别的格"。
             if (map == null) return null;
+
+            // 建筑优先于堆放区：公共货架上盖着一块私有堆放区时，
+            // 这块格子仍然属于"货架的主人（或公共）"，不能被区的主人抢走。
+            if (map.haulDestinationManager != null)
+            {
+                SlotGroup g0 = map.haulDestinationManager.SlotGroupAt(cell);
+                Building b0 = g0 != null ? g0.parent as Building : null;
+                if (b0 != null) return EconomyRealEstate.OwnerOfBuilding(b0);
+            }
+
             if (map.zoneManager != null)
             {
                 Zone zone = map.zoneManager.ZoneAt(cell);

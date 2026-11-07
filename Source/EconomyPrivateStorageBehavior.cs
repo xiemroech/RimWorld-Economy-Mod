@@ -148,6 +148,24 @@ namespace DshEconomy
                     if (owner == p) { MarkDirty(p); break; }
                 }
             }
+
+            // 地上的私有物也要认领：以前只扫背包，掉在地上的武器/装备永远没人搬
+            List<Thing> ground = new List<Thing>(grounded);
+            for (int i = 0; i < ground.Count; i++)
+            {
+                Thing t = ground[i];
+                if (t == null || t.Destroyed)
+                {
+                    grounded.Remove(t);
+                    continue;
+                }
+                if (!t.Spawned) continue;
+                Pawn owner = EconomyPrivate.OwnerOf(t);
+                if (owner == null || !owner.IsColonist) continue;
+                if (owner.Map != map || owner.Dead || owner.Downed) continue;
+                if (AlreadyStored(t, owner)) continue;
+                MarkDirty(owner);
+            }
         }
 
         public static void Tick(Map map)
@@ -166,6 +184,9 @@ namespace DshEconomy
             int day = now / GenDate.TicksPerDay;
 
             int busy = 0, noCell = 0, issued = 0, waiting = 0;
+            int now0 = now;
+            bool diagHour = now0 - lastDiagTick >= 2500;
+            if (diagHour) lastDiagTick = now0;
             List<Pawn> snapshot = new List<Pawn>(pending);
             for (int i = 0; i < snapshot.Count; i++)
             {
@@ -245,6 +266,28 @@ namespace DshEconomy
                     Log.Message("[HAUL] " + p.LabelShort + " 有私有物（" + item.LabelShort
                         + "）但自己名下没有能放的空格");
                     LogOwnDiagnostics(p, item, p.MapHeld);
+                    if (diagHour)
+                        Log.Message("[HAULWHY] " + p.LabelShort + " 搬不动（" + item.LabelShort
+                            + " def=" + item.def.defName + "）：自己名下没有能收它的格子");
+
+                    // 装备/衣服没有仓位时，先试着直接穿戴上（本来就不该进箱子）
+                    if (item.ParentHolder is Pawn_InventoryTracker && TryEquipOrWear(p, item))
+                    {
+                        Log.Message("[HAUL] " + p.LabelShort + " 直接把（" + item.LabelShort + "）装备上了（没有仓位）");
+                        continue;
+                    }
+
+                    // 没地方放就别一直塞在背包里：丢在脚下，让它回到地面（和公共货无法入库时一样）
+                    if (item.ParentHolder is Pawn_InventoryTracker && p.inventory != null && !p.Downed)
+                    {
+                        Thing droppedNow;
+                        if (p.inventory.innerContainer.TryDrop(item, p.PositionHeld, p.MapHeld,
+                                ThingPlaceMode.Near, out droppedNow) && droppedNow != null)
+                        {
+                            Log.Message("[HAUL] " + p.LabelShort + " 的（" + droppedNow.LabelShort
+                                + "）没有可放位置，已丢在脚下 " + droppedNow.PositionHeld);
+                        }
+                    }
                     noCell++;
 
                     continue;
@@ -255,7 +298,9 @@ namespace DshEconomy
                 job.count = Mathf.Min(item.stackCount, p.carryTracker.AvailableStackSpace(item.def));
                 if (job.count <= 0)
                 {
-
+                    if (diagHour)
+                        Log.Message("[HAULWHY] " + p.LabelShort + " 想搬（" + item.LabelShort
+                            + "）但手上没有空间（carryTracker 可用 0）");
                     continue;
                 }
                 job.haulMode = HaulMode.ToCellStorage;
@@ -278,6 +323,7 @@ namespace DshEconomy
 
 
         private static int lastInvScan = -99999;
+        private static int lastDiagTick = -99999;
 
         /// <summary>兜底：背包里带私有标签的东西如果没被 MarkDirty 过，每 2500 tick 补登记一次。</summary>
         public static void ScanInventories(Map map)
@@ -294,6 +340,18 @@ namespace DshEconomy
                     if (t.def.category != ThingCategory.Item) continue;
                     if (EconomyRegistry.IsCurrency(t.def)) continue;
                     if (EconomyPrivate.OwnerOf(t) != p) continue;
+                    // 已装备/已穿戴在物主自己身上 = 已在归位：不再搬，也不要"放下"
+                    if (t.ParentHolder is Pawn_EquipmentTracker eq && eq.pawn == p) { grounded.Remove(t); continue; }
+                    if (t.ParentHolder is Pawn_ApparelTracker ap && ap.pawn == p) { grounded.Remove(t); continue; }
+                    // 被别人装备着的私人物品：先让对方放下，下一轮再搬
+                    if (t.ParentHolder is Pawn_EquipmentTracker eq2 && eq2.pawn != p)
+                    {
+                        ThingWithComps dropped;
+                        ThingWithComps twc = t as ThingWithComps;
+                        if (twc != null && eq2.TryDropEquipment(twc, out dropped, eq2.pawn.PositionHeld, true) && dropped != null)
+                            GenPlace.TryPlaceThing(dropped, eq2.pawn.PositionHeld, eq2.pawn.MapHeld, ThingPlaceMode.Near);
+                        continue;
+                    }
                     if (AlreadyStored(t, p)) continue;
                     MarkDirty(p);
                     break;
@@ -331,6 +389,74 @@ namespace DshEconomy
             if (n == "Haul" || n == "HaulToCell" || n == "HaulToContainer") return true;
             if (n == "Clean" || n == "ClearSnow" || n == "Harvest" || n == "CutPlant"
                 || n == "Mine" || n == "Build" || n == "Repair" || n == "Deconstruct") return true;
+            return false;
+        }
+
+        /// <summary>没仓位时，能用就直接穿/拿在手上：武器进装备栏、衣服进着装栏。</summary>
+        private static bool TryEquipOrWear(Pawn p, Thing item)
+        {
+            try
+            {
+                if (item == null || item.def == null) return false;
+
+                if (item.def.IsWeapon && p.equipment != null && p.equipment.Primary == null)
+                {
+                    ThingWithComps twc = item as ThingWithComps;
+                    if (twc == null) return false;
+                    string reason;
+                    if (!EquipmentUtility.CanEquip(twc, p, out reason)) return false;
+                    p.inventory.innerContainer.Remove(item);
+                    p.equipment.AddEquipment(twc);
+                    return true;
+                }
+
+                Apparel ap = item as Apparel;
+                if (ap != null && p.apparel != null && !p.apparel.WornApparel.Contains(ap)
+                    && ApparelUtility.HasPartsToWear(p, ap.def)
+                    && ap.def.apparel.PawnCanWear(p)
+                    && !p.apparel.WornApparel.Any(a => a.def.apparel.LastLayer == ap.def.apparel.LastLayer))
+                {
+                    p.inventory.innerContainer.Remove(ap);
+                    p.apparel.Wear(ap, false);
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// 自己名下的“内部容器”（mod 箱子/冰箱等）是否还能收这件物品。
+        /// 这类容器不是靠 SlotGroup 的空格数，而是靠 inner ThingOwner 的剩余组数/堆叠容量。
+        /// </summary>
+        public static bool FindOwnContainer(Pawn p, Thing item, out Thing container)
+        {
+            container = null;
+            Map map = p != null ? p.MapHeld : null;
+            if (map == null || item == null || map.haulDestinationManager == null) return false;
+
+            foreach (IHaulDestination d in map.haulDestinationManager.AllHaulDestinationsListInPriorityOrder)
+            {
+                if (d == null || !d.HaulDestinationEnabled) continue;
+                Thing thing = d as Thing;
+                if (thing == null || thing.Destroyed || !thing.Spawned) continue;
+
+                ThingOwner inner = thing.TryGetInnerInteractableThingOwner();
+                if (inner == null || inner.GetCountCanAccept(item) <= 0) continue;
+
+                StorageSettings ss = d.GetStoreSettings();
+                if (ss == null) continue;
+                SlotGroup sg = thing.GetSlotGroup();
+                Pawn owner = sg != null ? OwnerOfGroup(sg) : StorageSettingsOwnerIndex.OwnerOf(ss);
+                if (owner != p) continue;
+
+                if (!d.Accepts(item)) continue;
+                if (!p.CanReach(thing, PathEndMode.ClosestTouch, Danger.Some)) continue;
+                if (!p.CanReserveNew(thing)) continue;
+
+                container = thing;
+                return true;
+            }
             return false;
         }
 
@@ -453,6 +579,10 @@ namespace DshEconomy
         public static bool HasRoomFor(Pawn p, Thing item, Map map)
         {
             if (p == null || item == null || map == null || map.haulDestinationManager == null) return false;
+
+            // 先看 mod 内部容器：它们容量在 ThingOwner 里，不看 SlotGroup 的空格。
+            Thing container;
+            if (FindOwnContainer(p, item, out container)) return true;
 
             foreach (SlotGroup g in map.haulDestinationManager.AllGroupsListForReading)
             {
@@ -616,6 +746,26 @@ namespace DshEconomy
             {
                 if (g == null || g.CellsList == null) continue;
                 if (OwnerOfGroup(g) != p) continue;
+
+                // mod 容器：容量在 inner ThingOwner 里（12 组 ≠ 1 格），必须按件数算
+                ThingOwner inner = ContainerUtil.InnerOf(g.parent as Building_Storage);
+                if (inner == null && g.parent is Thing)
+                {
+                    try { inner = (g.parent as Thing).TryGetInnerInteractableThingOwner(); } catch { }
+                }
+                if (inner != null)
+                {
+                    int cnt = ContainerUtil.CountIn(inner);
+                    ThingDef sampleDef = ThingDefOf.Silver;
+                    try
+                    {
+                        foreach (Thing it in inner) { if (it != null) { sampleDef = it.def; break; } }
+                    }
+                    catch { }
+                    used += cnt;
+                    capacity += cnt + Mathf.Max(1, ContainerUtil.CanAcceptCount(inner, sampleDef));
+                    continue;
+                }
 
                 // 每格能放几堆：储物建筑自己的 maxItemsInCell（木货箱G 是 16，4 格 = 64 容量），
                 // 普通货架/堆放区是 1。

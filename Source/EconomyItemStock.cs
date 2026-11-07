@@ -52,6 +52,54 @@ namespace DshEconomy
             return Mathf.Clamp(Mathf.RoundToInt(raw), 1, MaxCount(def));
         }
 
+        /// <summary>衣物层：内衣(OnSkin)/中衣(Middle)/外衣(Shell)。</summary>
+        public static ApparelLayerDef LayerOf(ThingDef def)
+        {
+            if (def == null || def.apparel == null) return null;
+            return def.apparel.LastLayer;
+        }
+
+        /// <summary>这个人身上是否已经有这一层的衣服（用于"每层至少一件"的补货判断）。</summary>
+        public static bool LayerCovered(Pawn p, ThingDef def)
+        {
+            ApparelLayerDef layer = LayerOf(def);
+            if (layer == null) return true;              // 不是衣服：不按层判断
+            if (p == null || p.apparel == null) return false;
+            var worn = p.apparel.WornApparel;
+            if (worn == null) return false;
+            for (int i = 0; i < worn.Count; i++)
+            {
+                Apparel a = worn[i];
+                if (a == null || a.def == null || a.def.apparel == null) continue;
+                if (a.def.apparel.LastLayer == layer) return true;
+            }
+            return false;
+        }
+
+        /// <summary>身上缺了几层（0–3）：内衣/中衣/外衣。</summary>
+        public static int MissingLayers(Pawn p)
+        {
+            int missing = 0;
+            missing += LayerCoveredByName(p, "OnSkin") ? 0 : 1;
+            missing += LayerCoveredByName(p, "Middle") ? 0 : 1;
+            missing += LayerCoveredByName(p, "Shell") ? 0 : 1;
+            return missing;
+        }
+
+        private static bool LayerCoveredByName(Pawn p, string layerName)
+        {
+            if (p == null || p.apparel == null || p.apparel.WornApparel == null) return false;
+            var worn = p.apparel.WornApparel;
+            for (int i = 0; i < worn.Count; i++)
+            {
+                Apparel a = worn[i];
+                if (a == null || a.def == null || a.def.apparel == null) continue;
+                ApparelLayerDef l = a.def.apparel.LastLayer;
+                if (l != null && l.defName == layerName) return true;
+            }
+            return false;
+        }
+
         /// <summary>这个人已经拥有多少件（背包私有 + 身上穿 + 手里拿 + 自己仓库里的）。</summary>
         public static int CountOwned(Pawn p, ThingDef def)
         {

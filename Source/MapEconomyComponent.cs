@@ -76,7 +76,8 @@ namespace DshEconomy
         // 奖金政策
         public BonusPolicy bonus = new BonusPolicy();
 
-        private int lastPayTick = -1;
+        // 发薪按"全局时间的整周期"算（TicksGame / 周期），与存档/读档时刻无关
+        private long lastPayPeriod = -1;
         private int lastLaborTick = -1;
         private int lastSatTick = -1;
         private int lastSatSync = -1;
@@ -443,7 +444,9 @@ namespace DshEconomy
                 try { if (Find.TickManager.TicksGame % 250 == 0) EconomyPreceptForcer.EnsureOnce(map); } catch { }
                 EconomyMarket.Tick();
                 EconomyPasteDispenser.StockTick(map);
-                try { EconomyPublicSilver.Tick(map); } catch (System.Exception e) { EcoLog.WarnOnce("publicsilver", e); }
+                try { EconomyPublicSilver.Tick(map);
+                try { StorageSettingsOwnerIndex.EnsureFresh(map); } catch { } } catch (System.Exception e) { EcoLog.WarnOnce("publicsilver", e); }
+                try { EconomyPublicGear.Tick(map); } catch (System.Exception e) { EcoLog.WarnOnce("pubgear", e); }
                 try
                 {
                     if (now - lastEstateCheck >= 2500)
@@ -623,15 +626,20 @@ namespace DshEconomy
         private void PayWages(int now)
         {
             if (wages == null || !wages.enabled) return;
-            if (lastPayTick < 0)
-            {
-                lastPayTick = now;
-                return;
-            }
             DshEconomySettings s = DshEconomyMod.Settings;
             int everyHours = s != null ? Mathf.Clamp(s.payIntervalHours, 1, 720) : 24;
-            if (now - lastPayTick < GenDate.TicksPerHour * everyHours) return;
-            lastPayTick = now;
+            long period = now / (long)(GenDate.TicksPerHour * everyHours);
+            if (period == lastPayPeriod) return;
+
+            // 上一个周期没结算过（刚读档/刚开局）：把当前周期记为已结算，等下一整周期
+            if (lastPayPeriod < 0)
+            {
+                lastPayPeriod = period;
+                return;
+            }
+
+            lastPayPeriod = period;
+
             Settle(everyHours);
         }
 
@@ -778,7 +786,7 @@ namespace DshEconomy
         {
             DshEconomySettings s = DshEconomyMod.Settings;
             int everyHours = s != null ? Mathf.Clamp(s.payIntervalHours, 1, 720) : 24;
-            lastPayTick = Find.TickManager.TicksGame;
+            lastPayPeriod = Find.TickManager.TicksGame / (long)(GenDate.TicksPerHour * everyHours);
             return Settle(everyHours);
         }
 
@@ -867,7 +875,7 @@ namespace DshEconomy
             Scribe_Deep.Look<BonusPolicy>(ref bonus, "dsh_bonus");
             if (bonus == null) bonus = new BonusPolicy();
 
-            Scribe_Values.Look(ref lastPayTick, "dsh_lastPayTick", -1);
+            Scribe_Values.Look(ref lastPayPeriod, "dsh_lastPayPeriod", -1L);
             Scribe_Values.Look(ref lastLaborTick, "dsh_lastLaborTick", -1);
             Scribe_Values.Look(ref lastSatTick, "dsh_lastSatTick", -1);
 

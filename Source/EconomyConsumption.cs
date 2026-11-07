@@ -146,6 +146,21 @@ namespace DshEconomy
         }
 
 
+        /// <summary>远近战倾向：射击比格斗高 2 级以上就只买远程，反过来只买近战。</summary>
+        private static bool WeaponFitsSkill(Pawn p, ThingDef d)
+        {
+            if (p == null || d == null || p.skills == null) return true;
+            SkillRecord sr = p.skills.GetSkill(SkillDefOf.Shooting);
+            SkillRecord mr = p.skills.GetSkill(SkillDefOf.Melee);
+            int shoot = sr != null ? sr.Level : 0;
+            int melee = mr != null ? mr.Level : 0;
+            if (Mathf.Abs(shoot - melee) < 2) return true;
+            bool wantsRanged = shoot > melee;
+            if (d.IsRangedWeapon) return wantsRanged;
+            if (d.IsMeleeWeapon) return !wantsRanged;
+            return true;
+        }
+
         /// <summary>取这件物品所属分类的社会化程度（0–1）。取不到时按 0 处理。</summary>
         private static float FreeDesireCurve(Map map, Thing thing, MapEconomyComponent comp)
         {
@@ -734,6 +749,34 @@ namespace DshEconomy
         /// <summary>买容器：把一座公共储物建筑的所有权买下来。公共剩余不足 10% 时停止。</summary>
 
 
+        /// <summary>是否"真的没地方放"——这时候才买容器；有空余就不买新的。</summary>
+        public static bool NeedsContainer(Pawn p, Map map)
+        {
+            if (p == null || map == null) return false;
+            float free = EconomyPrivateStorageBehavior.FreeRatio(p, map, out _, out _);
+            if (free < 0f) return true;
+            if (free <= PrivateFreeFloor) return true;
+            return !EconomyPrivateStorageBehavior.HasRoomForAny(p, map);
+        }
+
+        /// <summary>地图上最便宜的在售容器（买不起也算，用于攒钱目标）；没有则 null。</summary>
+        public static ThingDef CheapestForSaleContainer(Map map)
+        {
+            if (map == null || map.listerBuildings == null) return null;
+            ThingDef best = null;
+            float bestPrice = float.MaxValue;
+            foreach (Building b in map.listerBuildings.allBuildingsColonist)
+            {
+                Building_Storage st = b as Building_Storage;
+                if (st == null || st is Building_Market) continue;
+                if (EconomyRealEstate.OwnerOfBuilding(st) != null) continue;
+                if (!EconomyRealEstate.IsForSale(st)) continue;
+                float price = EconomyPrice.UnitPrice(st.def, map);
+                if (price < bestPrice) { bestPrice = price; best = st.def; }
+            }
+            return best;
+        }
+
         private static bool TryBuyContainer(Map map, MapEconomyComponent comp, Pawn p)
         {
             if (map.listerBuildings == null) return false;
@@ -813,6 +856,10 @@ namespace DshEconomy
         private static int WantedAmount(Pawn p, ThingDef def, string category, Map map = null)
         {
             if (def == null) return 1;
+            // 衣物：先补齐"内衣/中衣/外衣"三层，每层至少一件；层齐了才按价格囤
+            if (category == "DshEco_Apparel" && p != null && !EconomyItemStock.LayerCovered(p, def))
+                return 1;
+
             if (category == "DshEco_Food")
             {
                 float nutrition = def.GetStatValueAbstract(StatDefOf.Nutrition);
@@ -895,9 +942,21 @@ namespace DshEconomy
                     if (hediffs[i] is Hediff_Injury) return "DshEco_Medicine";
                 }
             }
+            // CE 装备预设优先：先补预设里缺的件
+            Dictionary<ThingDef, int> loadout = CEAmmo.LoadoutMap(p);
+            if (loadout.Count > 0)
+            {
+                foreach (KeyValuePair<ThingDef, int> kv in loadout)
+                {
+                    if (EconomyItemStock.CountOwned(p, kv.Key) >= kv.Value) continue;
+                    EconomyCategoryDef lc = EconomyRegistry.CategoryOf(kv.Key);
+                    if (lc != null) return lc.defName;
+                }
+            }
+
             // 没武器先补武器；衣物不够再补衣物（都按价格决定要几件）
             if (p.equipment != null && p.equipment.Primary == null) return "DshEco_Weapon";
-            if (p.apparel != null && p.apparel.WornApparelCount < 3) return "DshEco_Apparel";
+            if (p.apparel != null && EconomyItemStock.MissingLayers(p) > 0) return "DshEco_Apparel";
             return Rand.Chance(0.7f) ? "DshEco_Food" : "DshEco_Goods";
         }
 
@@ -971,6 +1030,30 @@ namespace DshEconomy
             }
             if (count == 0) return null;
 
+            // 衣物：缺的层优先，其次冷天挑保暖值高的
+            if (categoryDefName == "DshEco_Apparel" && p != null)
+            {
+                bool cold = map.mapTemperature != null && map.mapTemperature.OutdoorTemp < 0f;
+                Thing best = null;
+                float bestScore = float.MinValue;
+                for (int i = 0; i < all.Count; i++)
+                {
+                    Thing t = all[i];
+                    if (!IsCandidate(t, categoryDefName, p)) continue;
+                    float score = cold ? t.def.GetStatValueAbstract(StatDefOf.Insulation_Cold) : 0f;
+                    if (!EconomyItemStock.LayerCovered(p, t.def)) score += 1000f;   // 先补缺的层
+                    score += Rand.Value;                                            // 同分随机
+                    if (score > bestScore) { bestScore = score; best = t; }
+                }
+                if (best != null)
+                {
+                    def = best.def;
+                    price = EconomyPrice.UnitPrice(best, map);
+                    return best;
+                }
+                return null;
+            }
+
             int pick = Rand.Range(0, count);
             for (int i = 0; i < all.Count; i++)
             {
@@ -984,6 +1067,47 @@ namespace DshEconomy
             return null;
         }
 
+
+        /// <summary>原版判定：这件衣服这个小人能不能穿（部件、性别、体型）。</summary>
+        public static bool CanWear(Pawn p, ThingDef def)
+        {
+            if (p == null || def == null || def.apparel == null) return true;
+            try
+            {
+                if (!ApparelUtility.HasPartsToWear(p, def)) return false;
+                if (!def.apparel.PawnCanWear(p)) return false;
+                return true;
+            }
+            catch { return true; }
+        }
+
+        /// <summary>玩家设定的服装策略（原版 Outfit）：不在策略里的衣服不买。</summary>
+        public static bool AllowedByOutfit(Pawn p, ThingDef def)
+        {
+            if (p == null || def == null) return true;
+            try
+            {
+                if (p.outfits == null) return true;
+                ApparelPolicy policy = p.outfits.CurrentApparelPolicy;
+                if (policy == null || policy.filter == null) return true;
+                // 完全没限制（Anything）时一律放行
+                if (policy.filter.AllowedThingDefs == null) return true;
+                return policy.filter.Allows(def);
+            }
+            catch { return true; }
+        }
+
+        /// <summary>原版判定：这件武器/装备这个小人能不能用（种族、体型、部件）。</summary>
+        public static bool CanEquip(Pawn p, Thing t)
+        {
+            if (p == null || t == null) return true;
+            try
+            {
+                string reason;
+                return EquipmentUtility.CanEquip(t, p, out reason);
+            }
+            catch { return true; }
+        }
 
         /// <summary>器官、仿生体、血清、基因这类"植入物"，不参与日常消费购买。</summary>
         public static bool IsImplantLike(ThingDef def)
@@ -1040,6 +1164,27 @@ namespace DshEconomy
 
             // 医药类：没开自我治疗的人只能买白名单里的
             if (categoryDefName == "DshEco_Medicine" && !SelfTend(p) && !Whitelisted(t.def)) return false;
+
+            // 衣物/武器/装备：用原版判定，种族、体型、性别、部件不符的直接排除
+            if (p != null)
+            {
+                if (categoryDefName == "DshEco_Apparel")
+                {
+                    if (!CanWear(p, t.def)) return false;
+                    // 玩家在「方案 → 服装」里设的套装就是购买预设：不在套装里的衣服不买
+                    if (!AllowedByOutfit(p, t.def)) return false;
+                }
+                if ((categoryDefName == "DshEco_Weapon" || categoryDefName == "DshEco_Goods") && !CanEquip(p, t)) return false;
+                if (categoryDefName == "DshEco_Weapon" && !WeaponFitsSkill(p, t.def)) return false;
+
+                // CE 装备预设：预设里点了这类东西，就只买预设里的
+                if (categoryDefName == "DshEco_Weapon" || categoryDefName == "DshEco_Goods" || categoryDefName == "DshEco_Apparel")
+                {
+                    Dictionary<ThingDef, int> lo = CEAmmo.LoadoutMap(p);
+                    if (lo.Count > 0 && CEAmmo.LoadoutHasCategory(p, categoryDefName) && !lo.ContainsKey(t.def))
+                        return false;
+                }
+            }
             return true;
         }
 

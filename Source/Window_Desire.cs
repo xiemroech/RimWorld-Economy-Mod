@@ -38,7 +38,8 @@ namespace DshEconomy
                 List<string> lines = new List<string>();
                 EconomyConsumption.DesireBreakdown(crew[i], map, lines);
                 all.Add(lines);
-                height += 46f + lines.Count * 20f + 8f;
+                int planLines = EconomySavings.PlanText(crew[i], map).Split('\n').Length;
+                height += 46f + planLines * 20f + lines.Count * 20f + 8f;
             }
 
             Rect outRect = new Rect(0f, 36f, inRect.width, inRect.height - 36f);
@@ -59,9 +60,14 @@ namespace DshEconomy
                 y += 26f;
 
                 GUI.color = new Color(0.95f, 0.9f, 0.6f);
-                Widgets.Label(new Rect(16f, y, view.width - 16f, 20f), EconomySavings.PlanText(p, map).Replace("\n", " · "));
+                string[] plan = EconomySavings.PlanText(p, map).Split('\n');
+                for (int k = 0; k < plan.Length; k++)
+                {
+                    float lh = Mathf.Max(20f, Text.CalcHeight(plan[k], view.width - 24f));
+                    Widgets.Label(new Rect(16f, y, view.width - 16f, lh), plan[k]);
+                    y += lh + 2f;
+                }
                 GUI.color = Color.white;
-                y += 20f;
 
                 Text.Font = GameFont.Tiny;
                 GUI.color = new Color(0.85f, 0.85f, 0.85f);

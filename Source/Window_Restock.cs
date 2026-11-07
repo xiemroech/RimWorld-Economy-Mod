@@ -80,7 +80,7 @@ namespace DshEconomy
                 y += 26f;
             }
 
-            Rect listRect = new Rect(inRect.x, y, inRect.width, inRect.height - y - 76f);
+            Rect listRect = new Rect(inRect.x, y, inRect.width, inRect.height - y - 112f);
             if (comp.detailed)
             {
                 DrawRules(listRect);
@@ -96,12 +96,14 @@ namespace DshEconomy
                     + "想要「某样东西低于 20 件就补到 60 件」这种，勾上上面的细化开关。");
             }
 
-            // 底部按钮
-            float by = inRect.yMax - 34f;
-            Rect b1 = new Rect(inRect.x, by, 120f, 30f);
-            Rect b2 = new Rect(b1.xMax + 6f, by, 120f, 30f);
-            Rect b3 = new Rect(b2.xMax + 6f, by, 130f, 30f);
-            Rect b4 = new Rect(b3.xMax + 6f, by, 90f, 30f);
+            // 底部按钮（两行：上排预设，下排操作，全部按窗口宽度排版，不会超出）
+            float by = inRect.yMax - 32f;
+            float gap = 6f;
+            float w1 = 130f, w2 = 110f, w3 = 130f, w4 = 70f;
+            Rect b1 = new Rect(inRect.x, by, w1, 28f);
+            Rect b2 = new Rect(b1.xMax + gap, by, w2, 28f);
+            Rect b3 = new Rect(b2.xMax + gap, by, w3, 28f);
+            Rect b4 = new Rect(Mathf.Max(b3.xMax + gap, inRect.xMax - w4), by, w4, 28f);
 
             if (Widgets.ButtonText(b1, "按当前库存生成"))
             {
@@ -119,20 +121,20 @@ namespace DshEconomy
             }
             if (Widgets.ButtonText(b4, "关闭")) Close();
 
-            // 预设行
-            Rect pr = new Rect(inRect.xMax - 300f, by, 300f, 30f);
+            // 预设行（单独一行；宽度扣掉右下角「关闭」，永不重叠）
+            Rect pr = new Rect(inRect.x, by - 34f, inRect.width - 80f, 28f);
             DrawPresetRow(pr);
         }
 
         private void DrawPresetRow(Rect r)
         {
             List<string> list = RestockPresets.List;
-            Rect nameRect = new Rect(r.x, r.y, 120f, r.height);
+            Rect nameRect = new Rect(r.x, r.y, Mathf.Min(200f, r.width - 260f), r.height);
             presetName = Widgets.TextField(nameRect, presetName ?? string.Empty);
 
-            Rect left = new Rect(nameRect.xMax + 4f, r.y, 26f, r.height);
-            Rect mid = new Rect(left.xMax + 2f, r.y, 86f, r.height);
-            Rect right = new Rect(mid.xMax + 2f, r.y, 26f, r.height);
+            Rect left = new Rect(nameRect.xMax + 6f, r.y, 30f, r.height);
+            Rect mid = new Rect(left.xMax + 4f, r.y, 160f, r.height);
+            Rect right = new Rect(mid.xMax + 4f, r.y, 30f, r.height);
             if (Widgets.ButtonText(left, "<")) presetIndex--;
             if (Widgets.ButtonText(right, ">")) presetIndex++;
             if (list.Count == 0) presetIndex = -1;
@@ -166,7 +168,7 @@ namespace DshEconomy
                 ("允许 " + all.Count + " 种 · 显示 " + shown.Count + " · 已占 " + Mathf.RoundToInt(RestockStore.TotalPct(comp)) + "%").Truncate(240f));
 
             Rect body = new Rect(inner.x, bar.yMax + 2f, inner.width, inner.height - 30f);
-            const float rowH = 34f;
+            const float rowH = 46f;
             float total = shown.Count * rowH + 40f;
             Rect view = new Rect(0f, 0f, body.width - 20f, Mathf.Max(total, body.height));
             Widgets.BeginScrollView(body, ref scroll, view);
@@ -190,7 +192,10 @@ namespace DshEconomy
                     GUI.color = Color.white;
                 }
 
-                int slots = RestockStore.TotalSlots(storage);
+                // 容量统一按"件"算：
+                // 有内部容器的存储（存储 mod 的大箱子）容量本身就是件数；
+                // 纯格位存储是 格数 × 每格堆数 × 堆叠上限。
+                int capItems = RestockStore.CapacityItems(storage, def);
                 int stackLimit = RestockStore.ItemsPerSlot(storage, def);
                 int pct = rule != null ? Mathf.RoundToInt(rule.pct) : 10;
                 int newPct = pct;
@@ -198,25 +203,38 @@ namespace DshEconomy
 
                 // 右对齐：× 在 row 最右，件数输入在它左边
                 float delX = row.xMax - 26f;
-                float itemsBoxX = delX - 130f;
-                float itemsLblX = itemsBoxX - 24f;
+                float itemsBoxX = delX - 112f;
+                float itemsLblX = itemsBoxX - 22f;
 
                 float x = row.x + 196f;
-                Widgets.Label(new Rect(x, row.y + 7f, 34f, 24f), "占比");
+                Widgets.Label(new Rect(x, row.y + 13f, 34f, 24f), "占比");
                 x += 34f;
                 float pctW = Mathf.Clamp(itemsLblX - 150f - x, 120f, 150f);
                 x = PctStepper(new Rect(x, row.y + 3f, pctW, 28f), ref newPct, def.defName);
 
-                float share = slots * Mathf.Clamp(newPct, 0, 100) / 100f;
-                int allotSlots = newPct <= 0 ? 0 : Mathf.Max(1, Mathf.CeilToInt(share));
-                int allotItems = exact > 0 ? exact : allotSlots * stackLimit;
-                Widgets.Label(new Rect(x + 8f, row.y + 7f, Mathf.Max(60f, itemsLblX - x - 10f), 24f),
-                    ("≈ " + allotSlots + " 组 × " + stackLimit + " = " + allotItems + " 件").Truncate(210f));
+                int allotItems = exact > 0
+                    ? exact
+                    : Mathf.Max(0, Mathf.RoundToInt(capItems * Mathf.Clamp(newPct, 0, 100) / 100f));
+                // 两行显示，不用悬停也能看懂：上行件数，下行组数与槽位
+                int slots = ContainerUtil.CapacitySlots(storage);
+                int targetSlots = RestockStore.SlotsFor(storage, newPct);
+                int capGroups = stackLimit > 0 ? Mathf.Max(1, Mathf.CeilToInt((float)capItems / stackLimit)) : 0;
+                int targetGroups = stackLimit > 0 ? Mathf.Max(0, Mathf.CeilToInt((float)allotItems / stackLimit)) : 0;
+                float infoW = Mathf.Max(80f, itemsLblX - x - 10f);
+                Rect line1 = new Rect(x + 8f, row.y + 3f, infoW, 22f);
+                Rect line2 = new Rect(x + 8f, row.y + 23f, infoW, 20f);
+                Widgets.Label(line1, ("目标 " + allotItems + " 件 · 上限 " + capItems + " 件").Truncate(infoW));
+                GUI.color = new Color(1f, 1f, 1f, 0.65f);
+                Widgets.Label(line2, ("≈ " + targetGroups + "/" + capGroups + " 组 · " + targetSlots + "/" + slots + " 槽").Truncate(infoW));
+                GUI.color = Color.white;
+                TooltipHandler.TipRegion(new Rect(line1.x, line1.y, infoW, 40f),
+                    "仓库容量：" + slots + " 槽 ≈ " + capGroups + " 组（每组 " + stackLimit + " 件）\n"
+                    + "当前占比：" + newPct + "% → " + targetSlots + " 槽 = 目标 " + allotItems + " 件");
 
                 int newItems = allotItems;
                 Widgets.Label(new Rect(itemsLblX, row.y + 7f, 22f, 24f), "件");
-                newItems = Mathf.Clamp(newItems, 0, slots * stackLimit);
-                Stepper(new Rect(itemsBoxX, row.y + 3f, 126f, 28f), ref newItems, slots * stackLimit, def.defName);
+                newItems = Mathf.Clamp(newItems, 0, capItems);
+                Stepper(new Rect(itemsBoxX, row.y + 3f, 108f, 28f), ref newItems, capItems, def.defName);
 
                 if (newPct != pct || newItems != allotItems)
                 {
@@ -236,7 +254,7 @@ namespace DshEconomy
                     {
                         // 改件数：记住精确值，不再被占比四舍五入覆盖
                         rule.exactItems = Mathf.Max(0, newItems);
-                        rule.pct = slots * stackLimit > 0 ? 100f * newItems / (slots * stackLimit) : 0f;
+                        rule.pct = capItems > 0 ? 100f * newItems / capItems : 0f;
                     }
                     comp.detailed = true;
                 }
@@ -276,6 +294,37 @@ namespace DshEconomy
                 }
             }
             catch { }
+
+            // 存储 mod 的容器有时会把真正的过滤器放在 SlotGroup.Settings 上，
+            // 或者干脆返回一个"全禁"的默认过滤器；这时读出来是 0 种，搜索就永远是空的。
+            // 兜底：读不到就退回 SlotGroup.Settings；还是 0，就列出全部可获取物品（不影响实际存储判定）。
+            if (cachedDefs.Count == 0)
+            {
+                try
+                {
+                    SlotGroup g = storage.GetSlotGroup();
+                    StorageSettings gs = g != null ? g.Settings : null;
+                    if (gs != null && gs.filter != null)
+                    {
+                        foreach (ThingDef d in gs.filter.AllowedThingDefs)
+                        {
+                            if (d == null || !d.PlayerAcquirable) continue;
+                            cachedDefs.Add(d);
+                        }
+                    }
+                }
+                catch { }
+            }
+            if (cachedDefs.Count == 0)
+            {
+                foreach (ThingDef d in DefDatabase<ThingDef>.AllDefs)
+                {
+                    if (d == null || !d.PlayerAcquirable || d.category != ThingCategory.Item) continue;
+                    cachedDefs.Add(d);
+                }
+                Log.Message("[RESTOCK] " + storage.LabelShort + " 读不到过滤器允许项（0 种），已退回全部物品列表：" + cachedDefs.Count + " 种");
+            }
+
             cachedDefs.Sort((a, b) => string.Compare(a.label, b.label, System.StringComparison.Ordinal));
             return cachedDefs;
         }
