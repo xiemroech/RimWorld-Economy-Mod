@@ -172,6 +172,7 @@ namespace DshEconomy
 
         static EconomyBootstrap()
         {
+            ReflectionAudit.Begin();
             AttachItemTags();
             AttachPawnTab();
             AttachStorageRestockTab();
@@ -249,6 +250,7 @@ namespace DshEconomy
                 + " 矿场配方=" + mineRecipes
                 + " 加工台配方=" + benchRecipes
                 + " 货币=" + (EconomyRegistry.PrimaryCurrency != null ? EconomyRegistry.PrimaryCurrency.defName : "无"));
+            ReflectionAudit.Report();
         }
     }
 

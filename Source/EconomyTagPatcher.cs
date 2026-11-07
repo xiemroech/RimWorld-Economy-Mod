@@ -433,13 +433,27 @@ namespace DshEconomy
                     }
                     try
                     {
+                        // 体检发现：这里原先按 9 个参数查，而 1.7 的真实签名是 17 个，
+                        // 导致从此版本起一直没挂上，且没有 else 所以完全静默。
+                        // 现在先按 1.7 精确签名查，查不到再退回按名字查（补丁只用到 eater / foodSource / __result）。
                         MethodInfo findFood = AccessTools.Method(typeof(FoodUtility), "TryFindBestFoodSourceFor",
                             new[] { typeof(Pawn), typeof(Pawn), typeof(bool), typeof(Thing).MakeByRefType(),
-                                    typeof(ThingDef).MakeByRefType(), typeof(bool), typeof(bool), typeof(bool), typeof(bool) });
+                                    typeof(ThingDef).MakeByRefType(),
+                                    typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool),
+                                    typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool),
+                                    typeof(bool), typeof(FoodPreferability) });
+                        if (findFood == null)
+                        {
+                            findFood = AccessTools.Method(typeof(FoodUtility), "TryFindBestFoodSourceFor");
+                        }
                         if (findFood != null)
                         {
                             harmony.Patch(findFood, postfix: new HarmonyMethod(AccessTools.Method(typeof(PrivateFoodEatBlock), "FindFoodPostfix")));
-                            Log.Message("[DSH-ECONOMY] 别人的私有营养膏在搜索阶段就被排除：已挂载");
+                            Log.Message("[DSH-ECONOMY] 别人的私有营养膏在搜索阶段就被排除：已挂载（" + findFood.GetParameters().Length + " 个参数）");
+                        }
+                        else
+                        {
+                            Log.Warning("[DSH-ECONOMY] 别人的私有营养膏在搜索阶段就被排除：未找到 TryFindBestFoodSourceFor，本功能未生效");
                         }
 
                         MethodInfo optimality = AccessTools.Method(typeof(FoodUtility), "FoodOptimality",
