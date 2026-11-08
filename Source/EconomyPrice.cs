@@ -98,8 +98,14 @@ namespace DshEconomy
             return Mathf.Min(2000f / vanilla, Mathf.Max(2f, def.stackLimit * 2f));
         }
 
+        /// <summary>稀缺弹性指数 k：越大，缺货时涨得越猛。</summary>
+        public const float ScarcityElasticity = 0.5f;
+        /// <summary>价格倍率硬夹：再缺也不超过 3 倍，再积压也不低于 0.3 倍。</summary>
+        public const float ElasticMin = 0.3f;
+        public const float ElasticMax = 3f;
+
         /// <summary>
-        /// 稀缺系数：库存相对"参考库存"的多寡，只在 1±15% 内线性摆动。
+        /// 稀缺系数：库存相对"参考库存"的缺口，用幂函数放大，再乘需求（成交量）因子。
         /// 不改变价值本身，只让价格围绕价值波动。
         /// </summary>
         public static float ScarcityFactor(ThingDef def, Map map)
@@ -118,7 +124,16 @@ namespace DshEconomy
 
             // 正数 = 积压（跌价），负数 = 缺货（涨价）
             float ratio = (stock - reference) / Mathf.Max(reference, 1f);
-            float price = 1f - ScarcityRange * Mathf.Clamp(ratio, -1f, 1f);
+
+            // 幂函数：ratio<0 是缺货，(1+ratio)^(-k) > 1 → 涨价；ratio>0 是积压 → 跌价。
+            // 线性版本（1 - 0.15*ratio）在"缺 10 倍"和"缺 1 倍"给同样的价，等于没有供求信号。
+            float e = Mathf.Clamp(ratio, -0.95f, 50f);
+            float price = Mathf.Pow(1f + e, -ScarcityElasticity);
+            price = Mathf.Clamp(price, ElasticMin, ElasticMax);
+
+            // 需求这一侧：本期成交量 / 上期成交量。抢的人多 → 再上浮；没人要 → 压下来。
+            price *= EconomyTradeVolume.DemandFactor(def);
+            price = Mathf.Clamp(price, ElasticMin, ElasticMax);
 
             // 恐慌性囤积：通胀压力越高，人人抢货，价格再加一层
             float panic = 1f + Mathf.Clamp(EconomyInflation.Pressure(map), 0f, 3f) * 0.05f;

@@ -435,6 +435,8 @@ namespace DshEconomy
                     lastProductionDecay = now;
                     EconomyProductionStats.Decay();
                 }
+                // 成交量：满一期（1 天）就把本期翻成上期
+                EconomyTradeVolume.Roll(now);
             }
 
             // 劳动计量：每 250 tick 对一次账（换活才结算），不再 patch 全场热路径

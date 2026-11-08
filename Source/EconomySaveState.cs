@@ -94,6 +94,10 @@ namespace DshEconomy
             // 产地统计（这件东西在这个殖民地实际怎么来的）也要跟着存档走
             Scribe_Collections.Look(ref EconomyProductionStats.records, "dsh_productionStats", LookMode.Deep);
             Scribe_Values.Look(ref EconomyProductionStats.miningTicks, "dsh_miningTicks", 0f);
+            // 成交量：键是 defName（普通字符串），不会出现引用解析失败
+            Scribe_Collections.Look(ref EconomyTradeVolume.current, "dsh_tradeCurrent", LookMode.Value, LookMode.Value);
+            Scribe_Collections.Look(ref EconomyTradeVolume.previous, "dsh_tradePrevious", LookMode.Value, LookMode.Value);
+            Scribe_Values.Look(ref EconomyTradeVolume.lastRollTick, "dsh_tradeRollTick", -99999);
             if (Scribe.mode == LoadSaveMode.PostLoadInit) EconomyProductionStats.RebuildIndex();
 
             if (Scribe.mode == LoadSaveMode.LoadingVars || Scribe.mode == LoadSaveMode.PostLoadInit)

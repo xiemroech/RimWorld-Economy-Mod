@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -61,7 +61,17 @@ namespace DshEconomy
             float q = GoodsValue(map);
             if (q <= 1f) return 1f;
             float equilibrium = EquilibriumRatio * q + Baseline;
-            float raw = m / Mathf.Max(1f, equilibrium);
+
+            // 流通速度：同样的钱，转手越快推起来的物价越高（费雪方程 MV = PQ 的 V）。
+            // 用"本期成交件数 ÷ 货币量"粗估：钱少、货卖得多，说明周转快。
+            float velocity = 1f;
+            if (m > 1f)
+            {
+                float traded = EconomyTradeVolume.TotalThisPeriod();
+                velocity = Mathf.Clamp(traded / m, 0.5f, 2f);
+            }
+
+            float raw = (m * velocity) / Mathf.Max(1f, equilibrium);
             return Mathf.Clamp(Mathf.Pow(Mathf.Max(raw, 0.01f), Curve), MinIndex, MaxIndex);
         }
 

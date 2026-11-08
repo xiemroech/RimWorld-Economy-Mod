@@ -1187,6 +1187,9 @@ namespace DshEconomy
                     + (IsMineral(def) ? "矿物明细：累计挖矿 " + (EconomyProductionStats.miningTicks / (float)GenDate.TicksPerDay).ToString("0.00")
                         + " 人日 / 已登记 " + EconomyProductionStats.TotalOf(EconomyProductionStats.Source.Mine)
                         + " 件 → 每件 " + MiningDaysPerUnit(map).ToString("0.000") + " 人日\n" : "")
+                    + "需求：本期 " + EconomyTradeVolume.CurrentOf(def)
+                        + " 件 / 上期 " + EconomyTradeVolume.PreviousOf(def)
+                        + " → ×" + EconomyTradeVolume.DemandFactor(def).ToString("0.00") + "\n"
                     + "判定：" + hit + "\n"
                     + "c=" + MaterialCost(def, map).ToString("0.#")
                     + "   v+s=" + LaborValue(def, map).ToString("0.#")

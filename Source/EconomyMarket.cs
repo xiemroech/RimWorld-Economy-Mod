@@ -212,6 +212,10 @@ namespace DshEconomy
 
             MapEconomyComponent comp = map.GetComponent<MapEconomyComponent>();
             if (comp != null) comp.consumptionBought += n;
+
+            // 记一笔成交量：定价的"需求"一侧靠它（本期 vs 上期）。
+            // 救济/免费领取也算成交：东西确实被消耗了，需求是真实的。
+            EconomyTradeVolume.Note(rec.def, n);
             return true;
         }
         /// <summary>任务成功结束后调用：背包里已经有货，就地结算并打标签。</summary>

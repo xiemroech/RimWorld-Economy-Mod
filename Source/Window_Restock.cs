@@ -229,8 +229,11 @@ namespace DshEconomy
                 if (rule == null)
                 {
                     GUI.color = new Color(1f, 1f, 1f, 0.55f);
-                    Widgets.Label(new Rect(icon.xMax + 6f + 150f, row.y + 7f, 320f, 24f), "未勾选（勾上才能调占比/件数）");
+                    Widgets.Label(new Rect(icon.xMax + 6f + 210f, row.y + 7f, 320f, 24f), "未勾选（勾上才能调占比/件数）");
                     GUI.color = Color.white;
+                    // 必须自己把 y 往前推：continue 会跳过循环末尾的 y += rowH，
+                    // 结果后面所有行都画在同一行上（文字叠成一坨）。
+                    y += rowH;
                     continue;
                 }
 
