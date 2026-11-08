@@ -54,7 +54,8 @@ namespace DshEconomy
                 + "     本期消费：" + (comp != null ? comp.consumptionBought : 0) + " 件"
                 + "     囤积浪费：" + (comp != null ? comp.consumptionWasted : 0) + " 件";
             string line3 = "已纳入经济 " + covered + " 种物品，未归类 " + uncovered
-                + " 种　｜　价值 = 原料 c + 劳动 v+s，价格围绕价值波动";
+                + " 种　｜　价值 = 原料 c + 劳动 v+s，价格围绕价值波动"
+                + "　｜　总社会劳动生产率 " + FormatProductivity(map);
 
             Widgets.Label(new Rect(header.x + 10f, header.y + 5f, header.width - 20f, 22f), line1);
             Widgets.Label(new Rect(header.x + 10f, header.y + 26f, header.width - 20f, 22f), line2);
@@ -131,6 +132,18 @@ namespace DshEconomy
                     + "· 服装整洁 +1；工作被认可 +1；信仰一致按同信仰比例 +1~+4\n\n"
                     + "低于 30 可能罢工，低于 10 暴动，低于 4 革命。"));
             }
+        }
+
+        /// <summary>
+        /// 总社会劳动生产率：产出价值 ÷ 投入人日，单位"银/人日"。
+        /// 样本不足（< 3 件）显示"—"，避免开局给出误导性数字。
+        /// </summary>
+        private static string FormatProductivity(Map map)
+        {
+            if (map == null) return "—";
+            float v = EconomyProductionStats.SocialLaborProductivity(map);
+            if (v < 0f) return "—（样本不足）";
+            return v.ToString("0.0") + " 银/人日";
         }
     }
 

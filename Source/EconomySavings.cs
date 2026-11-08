@@ -259,7 +259,27 @@ namespace DshEconomy
             }
             if (weaponMissing(p, map)) return CheapestIn("DshEco_Weapon", map);
             if (CountCategory(p, "DshEco_Apparel") < 3) return CheapestIn("DshEco_Apparel", map);
-            return null;
+
+            // 缺了部位就要攒钱买植入体（原版机制判定，不依赖任何 mod）
+            return WantedImplant(p, map);
+        }
+
+        /// <summary>他缺的部位需要的植入体里，最该攒的那一件（便宜的优先）。</summary>
+        public static ThingDef WantedImplant(Pawn p, Map map)
+        {
+            if (p == null || map == null) return null;
+            List<EconomyImplantDemand.Option> needs = EconomyImplantDemand.Needs(p, map);
+            if (needs == null || needs.Count == 0) return null;
+
+            ThingDef best = null;
+            int bestPrice = int.MaxValue;
+            for (int i = 0; i < needs.Count; i++)
+            {
+                EconomyImplantDemand.Option o = needs[i];
+                if (o == null || o.item == null) continue;
+                if (o.price < bestPrice) { bestPrice = o.price; best = o.item; }
+            }
+            return best;
         }
 
         private static bool weaponMissing(Pawn p, Map map)

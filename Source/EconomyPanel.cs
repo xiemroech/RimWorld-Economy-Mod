@@ -306,13 +306,37 @@ namespace DshEconomy
         private static int marketSort = 5;
         private static bool marketSortAsc = false;
 
+        /// <summary>一行算好的数据。价格表每帧只画字，不再每帧重算。</summary>
+        private class MarketRow
+        {
+            public ThingDef def;
+            public string name;
+            public string stock;
+            public string reference;
+            public string cost;
+            public string labor;
+            public string scarcity;
+            public string price;
+        }
+
+        private static List<MarketRow> marketRows = new List<MarketRow>();
+        private static string lastFilter = "";
+
+        /// <summary>强制下次重算（点"刷新"时用）。</summary>
+        public static void RefreshMarket()
+        {
+            marketBuiltTick = -99999;
+        }
+
         private static float SortValue(ThingDef def, Map map, int mode)
         {
             MapEconomyComponent comp = map.GetComponent<MapEconomyComponent>();
             switch (mode)
             {
                 case 1: return comp != null ? comp.StockOf(def) : 0f;
-                case 2: return Mathf.Clamp(2000f / Mathf.Max(EconomyValue.Of(def, map), 0.1f), 2f, 300f);
+                case 2:
+                    float refStock = EconomyPrice.ReferenceStock(def);
+                    return refStock < 0f ? 0f : refStock;   // 算不出来的排在最后（升序时值为 0）
                 case 3: return EconomyValue.MaterialCost(def, map);
                 case 4: return EconomyValue.LaborValue(def, map);
                 case 5: return EconomyPrice.ScarcityFactor(def, map);
@@ -351,21 +375,36 @@ namespace DshEconomy
             if (Widgets.ButtonText(new Rect(x + 148f, y + 2f, 30f, 22f), "+")) comp.tradeSellMult = Mathf.Min(1f, comp.tradeSellMult + 0.05f);
         }
 
-        private static void DrawMarket(Rect inRect, MapEconomyComponent comp, Map map, ref Vector2 scroll)
+        /// <summary>
+        /// 总社会劳动生产率：产出价值 ÷ 投入人日，单位"银/人日"。
+        /// 样本不足时显示"—"，避免开局就给出误导性的数字。
+        /// </summary>
+        private static string FormatProductivity(Map map)
         {
-            Widgets.Label(new Rect(inRect.x, inRect.y + 2f, 860f, 22f),
+            float v = EconomyProductionStats.SocialLaborProductivity(map);
+            if (v < 0f) return "—（样本不足）";
+            return v.ToString("0.0") + " 银/人日";
+        }
+
+        private static void DrawMarket(Rect inRect, MapEconomyComponent comp, Map map, ref Vector2 scroll)
+        {            Widgets.Label(new Rect(inRect.x, inRect.y + 2f, 860f, 22f),
                 "商品价值 = c（原料）+ v+s（社会必要劳动时间 × 劳动日价值）；价格围绕价值波动 ±"
                 + (EconomyPrice.ScarcityRange * 100f).ToString("0") + "%，另受通胀与恐慌加成");
             Widgets.Label(new Rect(inRect.x, inRect.y + 22f, 860f, 22f),
                 EconomyInflation.Describe(map)
                 + "　本期消费 " + (comp != null ? comp.consumptionBought : 0)
-                + " 件　囤积浪费 " + (comp != null ? comp.consumptionWasted : 0) + " 件");
+                + " 件　囤积浪费 " + (comp != null ? comp.consumptionWasted : 0) + " 件"
+                + "　总社会劳动生产率 " + FormatProductivity(map));
 
             marketFilter = Widgets.TextField(new Rect(inRect.x, inRect.y + 50f, 200f, 24f), marketFilter);
-            Widgets.Label(new Rect(inRect.x + 208f, inRect.y + 54f, 700f, 22f),
-                "搜索物品名 / defName；参考库存 = 约 2000 银价值折成件数");
+            if (marketFilter != lastFilter) { lastFilter = marketFilter; RefreshMarket(); }
+            if (Widgets.ButtonText(new Rect(inRect.x + 208f, inRect.y + 50f, 66f, 24f), "刷新")) RefreshMarket();
+            if (Widgets.ButtonText(new Rect(inRect.x + 282f, inRect.y + 50f, 66f, 24f), "判断"))
+                Find.WindowStack.Add(new Window_EconomyExplain());
+            Widgets.Label(new Rect(inRect.x + 356f, inRect.y + 54f, 560f, 22f),
+                "搜索物品名 / defName；参考库存 = 约 2000 银 ÷ 原版市价（按堆叠上限封顶）");
 
-            BuildMarket(map);
+            BuildMarket(comp, map);
 
             float top = inRect.y + 80f;
             // 表头即排序按钮
@@ -377,44 +416,23 @@ namespace DshEconomy
             HeaderButton(inRect.x + 600f, top, 70f, "稀缺", 5);
             HeaderButton(inRect.x + 675f, top, 90f, "现价", 6);
 
-            var shown = new List<ThingDef>();
-            string f = marketFilter != null ? marketFilter.Trim() : "";
-            for (int i = 0; i < marketDefs.Count; i++)
-            {
-                ThingDef d = marketDefs[i];
-                if (d == null) continue;
-                if (f.Length > 0
-                    && d.defName.IndexOf(f, System.StringComparison.OrdinalIgnoreCase) < 0
-                    && d.label.IndexOf(f, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
-                shown.Add(d);
-            }
-
             Rect outRect = new Rect(inRect.x, top + 24f, inRect.width, inRect.yMax - top - 24f);
-            Rect viewRect = new Rect(0f, 0f, outRect.width - 18f, shown.Count * 26f + 6f);
+            Rect viewRect = new Rect(0f, 0f, outRect.width - 18f, marketRows.Count * 26f + 6f);
             Widgets.BeginScrollView(outRect, ref scroll, viewRect);
 
             float rowY = 2f;
-            for (int i = 0; i < shown.Count; i++)
+            for (int i = 0; i < marketRows.Count; i++)
             {
-                ThingDef def = shown[i];
-                float c = EconomyValue.MaterialCost(def, map);
-                float labor = EconomyValue.LaborValue(def, map);
-                float value = EconomyValue.Of(def, map);
-                float reference = Mathf.Clamp(2000f / Mathf.Max(value, 0.1f), 2f, 300f);
-                int stock = comp != null ? comp.StockOf(def) : 0;
-                float scarcity = EconomyPrice.ScarcityFactor(def, map);
-
+                MarketRow r = marketRows[i];
                 Rect row = new Rect(4f, rowY, viewRect.width - 8f, 24f);
                 if (i % 2 == 0) Widgets.DrawBoxSolid(row, new Color(1f, 1f, 1f, 0.03f));
-                Widgets.Label(new Rect(6f, rowY + 2f, 280f, 22f), def.LabelCap);
-                Widgets.Label(new Rect(290f, rowY + 2f, 60f, 22f), stock.ToString("0"));
-                Widgets.Label(new Rect(355f, rowY + 2f, 70f, 22f), reference.ToString("0"));
-                Widgets.Label(new Rect(430f, rowY + 2f, 80f, 22f), c.ToString("0.#"));
-                Widgets.Label(new Rect(515f, rowY + 2f, 80f, 22f), labor.ToString("0.#"));
-                string color = scarcity >= 1f ? "D05C5C" : "7CC35A";
-                Widgets.Label(new Rect(600f, rowY + 2f, 70f, 22f),
-                    "<color=#" + color + ">×" + scarcity.ToString("0.00") + "</color>");
-                Widgets.Label(new Rect(675f, rowY + 2f, 90f, 22f), EconomyPrice.UnitPrice(def, map).ToString("0.##"));
+                Widgets.Label(new Rect(6f, rowY + 2f, 280f, 22f), r.name);
+                Widgets.Label(new Rect(290f, rowY + 2f, 60f, 22f), r.stock);
+                Widgets.Label(new Rect(355f, rowY + 2f, 70f, 22f), r.reference);
+                Widgets.Label(new Rect(430f, rowY + 2f, 80f, 22f), r.cost);
+                Widgets.Label(new Rect(515f, rowY + 2f, 80f, 22f), r.labor);
+                Widgets.Label(new Rect(600f, rowY + 2f, 70f, 22f), r.scarcity);
+                Widgets.Label(new Rect(675f, rowY + 2f, 90f, 22f), r.price);
                 rowY += 26f;
             }
             Widgets.EndScrollView();
@@ -431,11 +449,13 @@ namespace DshEconomy
             }
         }
 
-        private static void BuildMarket(Map map)
+        private static void BuildMarket(MapEconomyComponent comp, Map map)
         {
             int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
-            if (marketDefs != null && now - marketBuiltTick < 120) return;
+            if (marketRows != null && marketRows.Count > 0 && now - marketBuiltTick < 120) return;
             marketBuiltTick = now;
+            if (marketRows == null) marketRows = new List<MarketRow>();
+            marketRows.Clear();
             if (marketDefs == null) marketDefs = new List<ThingDef>();
             marketDefs.Clear();
 
@@ -447,7 +467,8 @@ namespace DshEconomy
                 if (def == null || def.category != ThingCategory.Item) continue;
                 if (EconomyRegistry.CategoryOf(def) == null) continue;
                 if (EconomyConsumption.IsPasteDef(def)) continue;   // 营养膏不进价格表
-                if (EconomyValue.Of(def, map) <= 0.05f) continue;
+                if (EconomyValue.IsPlaceholder(def)) continue;      // 隐藏 mod 中间定义
+                if (EconomyValue.Of(def, map) <= 0.001f) continue;   // 只挡真·零价值，别把便宜货也藏起来
                 float dev = Mathf.Abs(EconomyPrice.ScarcityFactor(def, map) - 1f);
                 scored.Add(new KeyValuePair<ThingDef, float>(def, dev));
             }
@@ -462,7 +483,34 @@ namespace DshEconomy
                 float vb = SortValue(b.Key, map, marketSort);
                 return marketSortAsc ? va.CompareTo(vb) : vb.CompareTo(va);
             });
-            for (int i = 0; i < scored.Count; i++) marketDefs.Add(scored[i].Key);
+
+            string f = marketFilter != null ? marketFilter.Trim() : "";
+            for (int i = 0; i < scored.Count; i++)
+            {
+                ThingDef def = scored[i].Key;
+                if (f.Length > 0
+                    && def.defName.IndexOf(f, System.StringComparison.OrdinalIgnoreCase) < 0
+                    && def.label.IndexOf(f, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                float cost = EconomyValue.MaterialCost(def, map);
+                float labor = EconomyValue.LaborValue(def, map);
+                float reference = EconomyPrice.ReferenceStock(def);
+                int stock = comp != null ? comp.StockOf(def) : 0;
+                float scarcity = EconomyPrice.ScarcityFactor(def, map);
+
+                MarketRow row = new MarketRow();
+                row.def = def;
+                row.name = def.LabelCap;
+                row.stock = stock.ToString("0");
+                row.reference = reference < 0f ? "—" : reference.ToString("0");
+                // 0 和"—"要分开：0 是"算出来就是零"，— 是"没有配方/没有来源，算不出来"。
+                row.cost = EconomyValue.HasKnownCost(def) ? cost.ToString("0.#") : "—";
+                row.labor = EconomyValue.HasKnownLabor(def) ? labor.ToString("0.#") : "—";
+                string color = scarcity >= 1f ? "D05C5C" : "7CC35A";
+                row.scarcity = "<color=#" + color + ">×" + scarcity.ToString("0.00") + "</color>";
+                row.price = EconomyPrice.UnitPrice(def, map).ToString("0.##");
+                marketRows.Add(row);
+            }
         }
 
         private static void DrawTaxPolicy(Rect inRect, MapEconomyComponent comp, Map map, ref Vector2 scroll)
@@ -707,7 +755,8 @@ namespace DshEconomy
                 + "    待发工资 " + totalDue.ToString("0")
                 + "    剩余价值留存 " + surplus.ToString("0"));
             Widgets.Label(new Rect(4f, y + 20f, viewRect.width, 22f),
-                "累计劳动 " + (totalLabor / GenDate.TicksPerDay).ToString("0.0") + " 人日（每天自动发放一次）");
+                "累计劳动 " + (totalLabor / GenDate.TicksPerDay).ToString("0.0") + " 人日（每天自动发放一次）"
+                + "    总社会劳动生产率 " + FormatProductivity(map));
             if (Widgets.ButtonText(new Rect(4f, y + 44f, 140f, 26f), "立即发放全部"))
             {
                 int paid = comp.PayWagesNow();

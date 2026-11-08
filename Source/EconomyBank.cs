@@ -247,16 +247,32 @@ namespace DshEconomy
             return result;
         }
 
+        // 短缓存：界面每帧都会问"这个人有多少私银"，而下面要扫全图银堆，太贵。
+        // 缓存 60 tick（1 秒）足够，且花钱/发薪都会立刻改变实体，1 秒内的误差可接受。
+        private static readonly Dictionary<string, int> privateSilverCache = new Dictionary<string, int>();
+        private static int privateSilverTick = -99999;
+
         /// <summary>某人名下的私有银币总量（实体物品，含背包内）。</summary>
         public static int PrivateSilver(Map map, Pawn pawn)
         {
             if (map == null || pawn == null) return 0;
+            int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+            if (now - privateSilverTick > 60)
+            {
+                privateSilverCache.Clear();
+                privateSilverTick = now;
+            }
+            string key = map.uniqueID + "|" + pawn.GetUniqueLoadID();
+            int cached;
+            if (privateSilverCache.TryGetValue(key, out cached)) return cached;
+
             int total = 0;
             List<Thing> stacks = AllSilverStacks(map);
             for (int i = 0; i < stacks.Count; i++)
             {
                 if (EconomyPrivate.OwnerOf(stacks[i]) == pawn) total += stacks[i].stackCount;
             }
+            privateSilverCache[key] = total;
             return total;
         }
 
@@ -281,17 +297,34 @@ namespace DshEconomy
                 remaining -= take;
                 if (src.stackCount <= 0) src.Destroy();
 
-                Thing coin = ThingMaker.MakeThing(ThingDefOf.Silver);
+                                Thing coin = ThingMaker.MakeThing(ThingDefOf.Silver);
                 coin.stackCount = take;
 
-                // 先打标签再入包：否则入包时与已有私有银堆的归属判断不一致，
-                // 会分成两堆而不是合并成一堆。
-                EconomyPrivate.SetPrivate(coin, pawn);
-
-                if (pawn.inventory != null && pawn.inventory.innerContainer != null
-                    && pawn.inventory.innerContainer.TryAdd(coin, true))
+                // ① 他名下已经有一堆私有银，且装得下 → 直接并进去，标签天然保留
+                bool merged = false;
+                if (pawn.inventory != null && pawn.inventory.innerContainer != null)
                 {
-                    // 已并入背包
+                    IList<Thing> inner = pawn.inventory.innerContainer;
+                    for (int j = 0; j < inner.Count; j++)
+                    {
+                        Thing t = inner[j];
+                        if (t == null || t.Destroyed) continue;
+                        if (t.def != ThingDefOf.Silver) continue;
+                        if (EconomyPrivate.OwnerOf(t) != pawn) continue;
+                        if (t.stackCount + take > t.def.stackLimit) continue;
+                        t.stackCount += take;
+                        merged = true;
+                        break;
+                    }
+                }
+                if (merged) continue;
+
+                // ② 否则不合并地塞进背包：合并会让 coin 被销毁，标签随之丢失
+                EconomyPrivate.SetPrivate(coin, pawn);
+                if (pawn.inventory != null && pawn.inventory.innerContainer != null
+                    && pawn.inventory.innerContainer.TryAdd(coin, false))
+                {
+                    // 已入包，标签就在 coin 上
                 }
                 else
                 {

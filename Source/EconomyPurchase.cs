@@ -87,7 +87,8 @@ namespace DshEconomy
                 {
                     // 买不起就一分不扣，避免把整堆银币划走
                     // 吃了/用了却没付钱（不论食物还是成瘾品）→ 道德指责
-                    EconomySatisfactionEvents.Add(ingester, "道德指责（无力支付 " + __instance.LabelNoCount + "）", -1f, 3);
+                    // 标签不带食物名：否则每换一种食物就是一个新事件，永远叠不起来
+                    EconomySatisfactionEvents.Add(ingester, "道德指责（无力支付）", -1f, 3);
                     EconomySatisfaction.Recompute(ingester);
                     Log.Message("[DSH-ECONOMY] 购买失败：" + ingester.LabelShort + " 想吃 "
                         + __instance.LabelNoCount + "，需要 " + price + "，只有 " + have);

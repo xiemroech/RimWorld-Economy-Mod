@@ -43,6 +43,41 @@ namespace DshEconomy
             return unmet.TryGetValue(p, out n) ? n : 0;
         }
 
+        // ---------------- 存档（unmet 以前不存档，读档就清零） ----------------
+
+        private static List<Pawn> unmetPawns = new List<Pawn>();
+        private static List<int> unmetCounts = new List<int>();
+
+        /// <summary>由 EconomySaveState.ExposeData 调用：让"没买成的次数"跟着存档走。</summary>
+        public static void ExposeData()
+        {
+            if (Scribe.mode == LoadSaveMode.Saving)
+            {
+                unmetPawns = new List<Pawn>(unmet.Keys);
+                unmetCounts = new List<int>();
+                for (int i = 0; i < unmetPawns.Count; i++)
+                    unmetCounts.Add(unmet[unmetPawns[i]]);
+            }
+
+            Scribe_Collections.Look(ref unmetPawns, "dsh_unmetPawns", LookMode.Reference);
+            Scribe_Collections.Look(ref unmetCounts, "dsh_unmetCounts", LookMode.Value);
+        }
+
+        /// <summary>读档收尾：把临时列表灌回字典。必须在 ResetRuntime 之后调用。</summary>
+        public static void ApplyUnmetAfterLoad()
+        {
+            unmet.Clear();
+            if (unmetPawns == null || unmetCounts == null) return;
+
+            int n = Mathf.Min(unmetPawns.Count, unmetCounts.Count);
+            for (int i = 0; i < n; i++)
+            {
+                Pawn p = unmetPawns[i];
+                if (p == null || p.Destroyed) continue;
+                unmet[p] = unmetCounts[i];
+            }
+        }
+
         /// <summary>每小时把没买成的计数减半，反映"最近这段时间"的满足情况。</summary>
         public static void DecayUnmet()
         {
@@ -294,6 +329,13 @@ namespace DshEconomy
 
             // 正在做饭：不要去买生食，等着吃刚做好的
             if (IsCooking(p)) return;
+
+            // 无力支付：钱不够一份最基础的食物 → 不去捡生肉，直接领一份免费的基础食物
+            if (wantCat == "DshEco_Food" && IsBrokeForBasicFood(map, p))
+            {
+                ReliefFood(map, comp, p);
+                return;
+            }
 
             // 市场摊位优先：市场有货就从市场拿；市场没有才退回普通仓库/地面
             Thing stock = EconomyMarket.PickFromMarket(map, p, wantCat, out float price);
@@ -619,9 +661,33 @@ namespace DshEconomy
             return meals * 0.9f * (p != null && map != null ? WealthFactor(p, map) : 1f);
         }
 
+        /// <summary>
+        /// 还要不要继续下单。
+        /// 囤粮目标仍按"财富 × 粮价"放大（FoodTargetNutrition），
+        /// 但目标不可能超过"他买得起的量"：只买得起一份的穷人，有一口就算有，
+        /// 否则他永远凑不满 2.7 营养的储备门槛，每小时反复去买/去领。
+        /// </summary>
         public static bool HasPrivateFood(Pawn p, Map map)
         {
-            return StoredNutrition(p, map, false) >= FoodTargetNutrition(p, map);
+            float have = StoredNutrition(p, map, false);
+            if (have <= 0.05f) return false;
+
+            float target = FoodTargetNutrition(p, map);
+
+            // 用"买得起的份数"给储备目标封顶
+            if (map != null)
+            {
+                float price = CheapestFoodPrice(map, 1);
+                if (price > 0.05f)
+                {
+                    int affordable = Mathf.FloorToInt(EconomyBank.PrivateSilver(map, p) / price);
+                    if (affordable <= 1) return true;          // 只买得起一份：有一口就够
+                    float cap = affordable * 0.9f;
+                    if (cap < target) target = cap;
+                }
+            }
+
+            return have >= target;
         }
 
         /// <summary>私人存粮的营养总量；includePaste 决定营养膏算不算存粮。</summary>
@@ -698,6 +764,7 @@ namespace DshEconomy
                     if (!Eatable(p, t)) continue;
                     if (FoodTierOf(t.def) != tier || tier < minTier) continue;
                     if (!Affordable(t, p, map, silver)) continue;
+                    if (!p.CanReserve(t)) continue;
 
                     float opt = 0f;
                     try { opt = FoodUtility.FoodOptimality(p, t, t.def, 0f); }
@@ -740,6 +807,100 @@ namespace DshEconomy
             if (unit <= 0.05f) return true;
             int n = WantedAmount(p, t.def, "DshEco_Food", map);
             return silver >= Mathf.CeilToInt(unit * n);
+        }
+
+            public static bool IsBrokeForBasicFood(Map map, Pawn p)
+        {
+            int silver = EconomyBank.PrivateSilver(map, p);
+            float cheapest = CheapestFoodPrice(map, 1);
+
+            // 诊断：私产为什么是 0
+            int owned = EconomyPrivate.OwnedItems(p, map).Count;
+            string bag = "";
+            if (p.inventory != null && p.inventory.innerContainer != null)
+            {
+                IList<Thing> inner = p.inventory.innerContainer;
+                for (int i = 0; i < inner.Count; i++)
+                {
+                    Thing t = inner[i];
+                    if (t.def != ThingDefOf.Silver) continue;
+                    bag += "[" + t.stackCount + "银 组件=" + (EconomyPrivate.TagOf(t) != null)
+                        + " 归属=" + (EconomyPrivate.OwnerOf(t) == null
+                            ? "无" : EconomyPrivate.OwnerOf(t).LabelShort) + "]";
+                }
+            }
+            DevLog.Msg("[DSH-ECONOMY] 私产诊断 " + p.LabelShort + " 私银=" + silver
+                + " 私有物=" + owned + " 身上银=" + (bag.Length == 0 ? "无" : bag));
+
+            if (cheapest <= 0.05f) return false;
+            return silver < Mathf.CeilToInt(cheapest);
+        }
+        
+        /// <summary>
+        /// 领一份免费的基础食物。
+        /// 排序：普通食物（档次越低越优先）→ 厌恶食品 → 生肉（全图都没做好的饭时才拿）。
+        /// "厌恶"不自己判断，直接用原版 FoodOptimality —— 虫肉、人肉、戒律禁忌、种族食谱
+        /// 全在里面，mod 追加的禁忌也自动算进去。
+        /// </summary>
+        private static bool ReliefFood(Map map, MapEconomyComponent comp, Pawn p)
+        {
+            int prefTier = PreferredFoodTier(p, map);
+
+            Thing best = null;
+            float bestScore = float.MinValue;
+            List<Thing> all = FoodMarket(map);
+            bool anyCooked = false;
+
+            for (int i = 0; i < all.Count; i++)
+            {
+                Thing t = all[i];
+                if (t == null || t.Destroyed || !t.Spawned || t.stackCount <= 0) continue;
+                if (EconomyPrivate.IsPrivate(t)) continue;
+                if (!Eatable(p, t)) continue;
+
+                int tier = FoodTierOf(t.def);
+                float opt;
+                try { opt = FoodUtility.FoodOptimality(p, t, t.def, 0f); }
+                catch { opt = 0f; }
+
+                // 生肉：只在地图上根本没有做好的饭时，留作最后一手
+                if (tier < 1)
+                {
+                    if (!anyCooked) best = t;
+                    continue;
+                }
+                anyCooked = true;
+
+                // 普通食物随档次降权（档次越高越不该吃，因为要花钱）；
+                // 厌恶食品的原版评分本来就是负的，自然被压到普通食物下面。
+                float score = opt - tier * 3f;
+                if (score > bestScore) { bestScore = score; best = t; }
+            }
+
+            if (best == null) { StatBroke++; RecordUnmet(p); return false; }
+
+            int actualTier = FoodTierOf(best.def);
+            int n = Mathf.Clamp(WantedAmount(p, best.def, "DshEco_Food", map), 1, best.stackCount);
+            if (!EconomyMarket.StartPurchase(map, p, best, n, 0f, true)) 
+            {
+                StatBroke++;
+                RecordUnmet(p);
+                return false;
+            }
+
+            StatJob++;
+
+            // 扣分 = 1 + 2 × 落差档位。落差是他"平时吃得起"与"实际吃到"的差，
+            // 富人掉到基础食物扣得多，本来就吃基础食物的人扣得少。
+            float gap = Mathf.Max(0f, prefTier - actualTier);
+            float pen = -(1f + 2f * gap);
+            string why;
+            // 标签统一成一条：带食物名/档位的话，每换一种食物就是另一个事件，永远叠不起来
+            if (actualTier < 1) pen -= 2f;
+            why = "道德指责（无力支付）";
+            EconomySatisfactionEvents.Add(p, why, pen, 3);
+            EconomySatisfaction.Recompute(p);
+            return true;
         }
 
         /// <summary>从地图库存里挑一件"消费品"：优先食物、成瘾品、药品，其次其它已归类物品。</summary>
@@ -883,7 +1044,12 @@ namespace DshEconomy
                         need = Mathf.Min(need, allowMeals - haveMeals);
                     }
 
-                    int cap = IsPasteDef(def) ? 6 : 4;   // 单次最多 4 份，别把殖民地口粮一把抓光
+                    // 单次购买上限：食物按"份"算（别把殖民地口粮一把抓光），
+                    // 弹药/耗材按堆叠量算——CE 的弹药一堆上百，只买 4 发等于愚公移山。
+                    int cap;
+                    if (IsPasteDef(def)) cap = 6;
+                    else if (def != null && def.ingestible != null) cap = 4;
+                    else cap = Mathf.Clamp(def != null ? def.stackLimit : 75, 1, 150);
                     return Mathf.Clamp(need, 0, cap);
                 }
                 int n = Mathf.CeilToInt(0.9f / nutrition);
@@ -1156,8 +1322,9 @@ namespace DshEconomy
                 || dn.IndexOf("Pollution", System.StringComparison.OrdinalIgnoreCase) >= 0
                 || dn.IndexOf("Toxic", System.StringComparison.OrdinalIgnoreCase) >= 0) return false;
 
-            // 器官/仿生体/血清/基因不是"消费品"：只由手术按需结算，不做冲动购买
-            if (IsImplantLike(t.def)) return false;
+            // 器官/仿生体/血清/基因不是"消费品"：只有这个小人确实缺对应部位时才算候选
+            if (IsImplantLike(t.def)
+                && (p == null || !EconomyImplantDemand.Wanted(p, t.def))) return false;
 
             EconomyCategoryDef cat = EconomyRegistry.CategoryOf(t.def);
             if (cat == null || cat.defName != categoryDefName) return false;

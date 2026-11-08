@@ -90,6 +90,11 @@ namespace DshEconomy
         {
             base.ExposeData();
             Scribe_Values.Look(ref version, "dsh_saveVersion", 0);
+            EconomyConsumption.ExposeData();   // "没买成的次数"跟着存档走
+            // 产地统计（这件东西在这个殖民地实际怎么来的）也要跟着存档走
+            Scribe_Collections.Look(ref EconomyProductionStats.records, "dsh_productionStats", LookMode.Deep);
+            Scribe_Values.Look(ref EconomyProductionStats.miningTicks, "dsh_miningTicks", 0f);
+            if (Scribe.mode == LoadSaveMode.PostLoadInit) EconomyProductionStats.RebuildIndex();
 
             if (Scribe.mode == LoadSaveMode.LoadingVars || Scribe.mode == LoadSaveMode.PostLoadInit)
             {
@@ -102,6 +107,7 @@ namespace DshEconomy
                 EconomyConsumption.ResetRuntime();
                 EconomyMarket.ClearRuntime();
                 EconomyValue.Reset();
+                EconomyProductionStats.RebuildIndex();
                 EconomyEmotionSpread.ResetRuntime();
                 if (Scribe.mode == LoadSaveMode.PostLoadInit && Current.Game != null)
                 {
@@ -109,6 +115,7 @@ namespace DshEconomy
                     // 清掉旧版本误挂到动物/皮毛等非建筑上的「故障」组件
                     EconomyDepreciation.CleanupNonBuildings();
                     EconomyPrivate.PruneAllMaps();
+                    EconomyConsumption.ApplyUnmetAfterLoad();   // 把存档里的 unmet 灌回字典
                     try
                     {
                         EconomyRealEstate estate = Current.Game.GetComponent<EconomyRealEstate>();

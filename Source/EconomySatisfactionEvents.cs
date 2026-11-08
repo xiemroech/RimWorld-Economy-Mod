@@ -62,7 +62,7 @@ namespace DshEconomy
         }
 
         /// <summary>同名事件最多叠几层。</summary>
-        public const int MaxStacks = 8;
+        public const int MaxStacks = 6;
 
         private static void RefreshDuration(Pawn pawn, string label, int days)
         {

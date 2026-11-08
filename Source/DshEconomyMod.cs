@@ -144,6 +144,43 @@ namespace DshEconomy
             return "内部经济框架";
         }
 
+        /// <summary>
+        /// 调试用：按静态分类，给地图上每种物品各喂 5 条产地记录。
+        /// 目的是不用真的去挖矿/种地/宰动物，也能立刻看到"统计生效后价格怎么变"。
+        /// 只影响产地统计，不动任何真实物品。
+        /// </summary>
+        private static int SimulateProduction(Map map)
+        {
+            if (map == null) return 0;
+            HashSet<string> seen = new HashSet<string>();
+            List<Thing> things = map.listerThings.AllThings;
+            int n = 0;
+            for (int i = 0; i < things.Count; i++)
+            {
+                Thing t = things[i];
+                if (t == null || t.def == null) continue;
+                if (!seen.Add(t.def.defName)) continue;
+
+                ThingDef d = t.def;
+                try
+                {
+                    if (EconomyValue.IsMineral(d))
+                        EconomyProductionStats.Note(d, EconomyProductionStats.Source.Mine, 5);
+                    else if (EconomyValue.IsMeatSource(d))
+                        EconomyProductionStats.Note(d, EconomyProductionStats.Source.Butcher, 5);
+                    else if (EconomyValue.HasPlantSource(d))
+                        EconomyProductionStats.Note(d, EconomyProductionStats.Source.Harvest, 5);
+                    else if (EconomyValue.HasRecipeSource(d))
+                        EconomyProductionStats.Note(d, EconomyProductionStats.Source.Recipe, 5);
+                    else
+                        continue;
+                    n++;
+                }
+                catch { }
+            }
+            return n;
+        }
+
         public override void WriteSettings()
         {
             base.WriteSettings();
@@ -412,6 +449,33 @@ namespace DshEconomy
                     Log.Message("[DSH-ECONOMY] 调试：国库=" + EconomyBank.ColonySilver(map)
                         + " 劳动=" + (EconomyLedger.TotalLabor(map.mapPawns.FreeColonists) / GenDate.TicksPerDay).ToString("0.00") + " 人日"
                         + " 个股民=" + map.mapPawns.FreeColonists.Count);
+                }
+                y += 30f;
+
+                // 产地统计的调试按钮：不用真的去挖矿/种地，也能立刻看到统计生效后的价格
+                if (Widgets.ButtonText(new Rect(view.x, y, 140f, 26f), "产地统计·打印"))
+                {
+                    Log.Message("[DSH-ECONOMY] 产地统计：共 " + EconomyProductionStats.records.Count + " 条记录");
+                    int shown = 0;
+                    for (int i = 0; i < EconomyProductionStats.records.Count && shown < 40; i++)
+                    {
+                        EconomyProductionStats.Record r = EconomyProductionStats.records[i];
+                        if (r == null) continue;
+                        Log.Message("[DSH-ECONOMY]   产地 " + r.defName + "：合成 " + r.recipe
+                            + " / 挖掘 " + r.mine + " / 收割 " + r.harvest
+                            + " / 屠宰 " + r.butcher + " / 产出 " + r.gather);
+                        shown++;
+                    }
+                }
+                if (Widgets.ButtonText(new Rect(view.x + 148f, y, 140f, 26f), "产地统计·模拟 +5"))
+                {
+                    int n = SimulateProduction(map);
+                    Messages.Message("已给 " + n + " 种物品各喂 5 条产地记录", MessageTypeDefOf.NeutralEvent, false);
+                }
+                if (Widgets.ButtonText(new Rect(view.x + 296f, y, 140f, 26f), "产地统计·清空"))
+                {
+                    EconomyProductionStats.Reset();
+                    Messages.Message("产地统计已清空", MessageTypeDefOf.NeutralEvent, false);
                 }
                 y += 30f;
 

@@ -206,16 +206,9 @@ namespace DshEconomy
             {
                 bool ok = false;
 
-                MethodInfo store = AccessTools.Method(typeof(StoreUtility), "TryFindBestBetterStoreCellFor");
-                if (false && store != null)
-                {
-                    harmony.Patch(store, postfix: new HarmonyMethod(AccessTools.Method(typeof(StoreUtilityPrivatePatch), "Postfix")));
-                    ok = true;
-                }
-                else
-                {
-                    Log.Message("[DSH-ECONOMY] 搬运兜底已停用（死代码）：CellPrefix 规则已接管，非 API 缺失");
-                }
+                // 【已移除】搬运换格兜底（StoreUtility.TryFindBestBetterStoreCellFor postfix）。
+                // 当年为压「一个 tick 连开 10 个失败搬运」临时关掉；根因后来由 StorePriorityGuard 修好，
+                // 这段属于死代码，留着只会让日志误报「未找到 API」。
 
                 MethodInfo killM = AccessTools.Method(typeof(Pawn), "Kill", new[] { typeof(DamageInfo?), typeof(Hediff) });
                 if (killM != null)
@@ -249,12 +242,7 @@ namespace DshEconomy
                     ok = true;
                 }
 
-                if (false && haulJobM != null)
-                {
-                    harmony.Patch(haulJobM, postfix: new HarmonyMethod(AccessTools.Method(typeof(HaulCountPatch), "Postfix")));
-                    Log.Message("[DSH-ECONOMY] 搬运数量按负重封顶：已挂载");
-                    ok = true;
-                }
+                // 【已移除】搬运数量按负重封顶（HaulCountPatch.Postfix）。同为当年临时关闭的兜底。
 
                 MethodInfo acceptM = AccessTools.Method(typeof(StorageSettings), "AllowedToAccept", new[] { typeof(Thing) });
                 if (acceptM != null)
@@ -272,18 +260,8 @@ namespace DshEconomy
                     ok = true;
                 }
 
-                MethodInfo storageFor = null;
-                foreach (MethodInfo mi in typeof(StoreUtility).GetMethods(BindingFlags.Public | BindingFlags.Static))
-                {
-                    if (mi.Name == "TryFindBestBetterStorageFor") { storageFor = mi; break; }
-                }
-                if (false && storageFor != null)
-                {
-                    harmony.Patch(storageFor, postfix: new HarmonyMethod(AccessTools.Method(typeof(StoreUtilityStorageForPatch), "Postfix")));
-                    Log.Message("[DSH-ECONOMY] 搬运目标兜底（TryFindBestBetterStorageFor）：已挂载（参数 " + storageFor.GetParameters().Length + "）");
-                    ok = true;
-                }
-                else Log.Message("[DSH-ECONOMY] 容器搬运兜底已停用（死代码）：非 API 缺失");
+                // 【已移除】容器搬运兜底（StoreUtility.TryFindBestBetterStorageFor postfix）。
+                // 同第一处，属修好根因后遗留的死代码。
 
                 MethodInfo zoneGizmos = AccessTools.Method(typeof(Zone), "GetGizmos");
                 if (zoneGizmos != null)

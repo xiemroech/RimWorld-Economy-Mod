@@ -27,6 +27,8 @@ namespace DshEconomy
         public static void Begin()
         {
             if (installed) return;
+            // 只在开发者模式下启用：玩家环境零开销、零全局挂钩、不写任何文件
+            if (!Prefs.DevMode) return;
             installed = true;
             try
             {
@@ -123,20 +125,42 @@ namespace DshEconomy
 
         private static string WriteFile(string head)
         {
+            report.Add("");
+            report.Add("汇总：" + head);
+
+            // 优先写到游戏日志目录（和 Player.log 放一起），这样不会被当成 mod 文件上传
+            List<string> dirs = new List<string>();
             try
             {
-                report.Add("");
-                report.Add("汇总：" + head);
-                string dir = Path.GetDirectoryName(typeof(ReflectionAudit).Assembly.Location);
-                string path = Path.Combine(dir, "audit-report.txt");
-                File.WriteAllLines(path, report.ToArray(), Encoding.UTF8);
-                return path;
+                string pd = UnityEngine.Application.persistentDataPath;
+                if (!string.IsNullOrEmpty(pd)) dirs.Add(Path.Combine(pd, "Logs"));
             }
-            catch (Exception e)
+            catch { }
+            try
             {
-                Log.Warning("[DSH-ECONOMY] 体检报告写文件失败：" + e.Message);
-                return null;
+                string loc = typeof(ReflectionAudit).Assembly.Location;
+                if (!string.IsNullOrEmpty(loc))
+                {
+                    string d = Path.GetDirectoryName(loc);
+                    if (!string.IsNullOrEmpty(d)) dirs.Add(d);
+                }
             }
+            catch { }
+
+            for (int i = 0; i < dirs.Count; i++)
+            {
+                try
+                {
+                    string path = Path.Combine(dirs[i], "audit-report.txt");
+                    File.WriteAllLines(path, report.ToArray(), Encoding.UTF8);
+                    return path;   // 写成功就停，别到处留文件
+                }
+                catch (Exception e)
+                {
+                    Log.Warning("[DSH-ECONOMY] 体检报告写入失败（" + dirs[i] + "）：" + e.Message);
+                }
+            }
+            return null;
         }
 
         private static void Postfix(object[] __args, MethodBase __result)

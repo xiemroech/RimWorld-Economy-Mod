@@ -34,12 +34,22 @@ namespace DshEconomy
                 if (map == null) return;
 
                 float value, price;
-                PriceOf(d, map, out value, out price);
+                PriceOf(__instance, map, out value, out price);
                 if (price <= 0f && value <= 0f) return;
 
+                // 饭菜这类有"实际用料"的东西，提示框要显示真实原料，而不是配方平均值
+                float c = EconomyValue.MaterialCost(d, map);
+                float lab = EconomyValue.LaborValue(d, map);
+                float realIn = EconomyValue.RealIngredientCost(__instance);
+                if (realIn > 0.01f)
+                {
+                    c = realIn;
+                    value = realIn + lab;
+                }
+
                 string line = "现价：" + price.ToString("F2") + " 银 / 件（价值 " + value.ToString("F1") + " = 原料 " +
-                              EconomyValue.MaterialCost(d, map).ToString("F1") + " + 劳动 " +
-                              EconomyValue.LaborValue(d, map).ToString("F1") + "）";
+                              c.ToString("F1") + " + 劳动 " +
+                              lab.ToString("F1") + "）";
                 if (__instance.stackCount > 1)
                 {
                     line += "\n整叠 " + __instance.stackCount + " 件 ≈ " + (price * __instance.stackCount).ToString("F0") + " 银";
@@ -50,28 +60,25 @@ namespace DshEconomy
             catch { }
         }
 
-        private static void PriceOf(ThingDef d, Map map, out float value, out float price)
+        /// <summary>价格必须按"这一件"算：同一 def 的饭，用料不同价不同。</summary>
+        private static void PriceOf(Thing thing, Map map, out float value, out float price)
         {
+            ThingDef d = thing.def;
             int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
             if (now - cacheTick > 250)
             {
-                priceCache.Clear();
                 valueCache.Clear();
                 cacheTick = now;
             }
 
             string key = d.shortHash + "|" + map.uniqueID;
-            if (!priceCache.TryGetValue(key, out price))
+            if (!valueCache.TryGetValue(key, out value))
             {
                 value = EconomyValue.Of(d, map);
-                price = EconomyPrice.UnitPrice(d, map);
-                priceCache[key] = price;
                 valueCache[key] = value;
             }
-            else
-            {
-                valueCache.TryGetValue(key, out value);
-            }
+
+            price = EconomyPrice.UnitPrice(thing, map);
         }
     }
 }

@@ -377,6 +377,8 @@ namespace DshEconomy
         private bool silverReapplied;
         private int lastTagPrune = -99999;
         private int lastEstateCheck = -99999;
+        private int lastSettingsSync = -99999;
+        private int lastProductionDecay = -99999;
         private int pawnCursor;
 
         /// <summary>每次只处理一小片殖民者：紧急买食物 + 睡觉采样（约 1000 tick 轮完一轮）。</summary>
@@ -419,10 +421,21 @@ namespace DshEconomy
                 silverReapplied = true;
                 EconomySilverGraphic.Apply();
             }
-            Refresh();
-            ApplyTradeSettings();
-
             int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+
+            // 这两件事以前每 tick 无条件跑；改成每 250 tick 同步一次，省掉 tick 的固定开销
+            if (now - lastSettingsSync >= 250)
+            {
+                lastSettingsSync = now;
+                Refresh();
+                ApplyTradeSettings();
+                // 产地统计的衰减：15 天减半一次，让"最近怎么来的"占主导
+                if (now - lastProductionDecay >= EconomyProductionStats.DecayIntervalTicks)
+                {
+                    lastProductionDecay = now;
+                    EconomyProductionStats.Decay();
+                }
+            }
 
             // 劳动计量：每 250 tick 对一次账（换活才结算），不再 patch 全场热路径
             if (!EconomyLaborSessions.Active) AccumulateLaborLegacy(now);
@@ -548,6 +561,9 @@ namespace DshEconomy
             float old;
             workHours.TryGetValue(key, out old);
             workHours[key] = old + rawTicks;
+            // 挖矿的工时另外存一份长期账：工资那边每期会清，这里不清，
+            // 用来算"挖一件平均花多少人日"，从而给矿物定价。
+            if (type == "Mining") EconomyProductionStats.NoteMiningLabor(rawTicks);
         }
 
         /// <summary>这个人本期各工作类型的原始工时（已按类型分好）。</summary>

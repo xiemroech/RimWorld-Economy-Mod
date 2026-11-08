@@ -54,26 +54,82 @@ namespace DshEconomy
                 }
                 if (!isAugment) return;
 
-                int price = PriceOf(recipe, pawn.Map);
-                if (price <= 0) return;
+                // 新机制：钱在"购买"那一刻就付过了，手术阶段不再收费，也不再拦"付不起"。
+                // 这里只做一件事：如果他背包里带着私有的对应植入体，把它放到脚边，
+                // 否则原版手术取料只认地面/仓库，会把"有货"当成"没货"。
+                if (OwnsImplant(pawn, recipe)) DropForSurgery(pawn, recipe);
+            }
+            catch { }
+        }
 
-                int silver = EconomyBank.PrivateSilver(pawn.Map, pawn);
-                if (silver < price)
+        /// <summary>
+        /// 手术要用的植入体如果在他背包里，原版的手术取料只认地面/仓库，会把"有货"当成"没货"。
+        /// 所以在可行性检查这一步把它放到脚边（并解除禁用）。
+        /// </summary>
+        public static void DropForSurgery(Pawn pawn, RecipeDef recipe)
+        {
+            try
+            {
+                if (pawn == null || pawn.Map == null || recipe == null || recipe.ingredients == null) return;
+                if (pawn.inventory == null || pawn.inventory.innerContainer == null) return;
+
+                for (int i = 0; i < recipe.ingredients.Count; i++)
                 {
-                    __result = new AcceptanceReport("付不起：需要 " + price + " 银，个人只有 " + silver + " 银");
+                    IngredientCount ing = recipe.ingredients[i];
+                    if (ing == null || ing.filter == null) continue;
+                    ThingDef d = ing.filter.AnyAllowedDef;
+                    if (d == null || !EconomyConsumption.IsImplantLike(d)) continue;
+
+                    IList<Thing> inner = pawn.inventory.innerContainer;
+                    for (int j = inner.Count - 1; j >= 0; j--)
+                    {
+                        Thing t = inner[j];
+                        if (t == null || t.Destroyed || t.def != d) continue;
+                        if (EconomyPrivate.OwnerOf(t) != pawn) continue;
+
+                        Thing dropped;
+                        if (pawn.inventory.innerContainer.TryDrop(t, pawn.PositionHeld, pawn.MapHeld,
+                                ThingPlaceMode.Near, out dropped) && dropped != null)
+                        {
+                            dropped.SetForbidden(false, false);
+                            DevLog.Msg("[DSH-ECONOMY] 手术取材：" + pawn.LabelShort
+                                + " 把 " + dropped.def.label + " 放到脚边");
+                        }
+                        return;
+                    }
                 }
             }
             catch { }
         }
 
-        /// <summary>手术完成后结算，把钱从病人私银转到殖民地。</summary>
-        public static void Charge(Pawn patient, RecipeDef recipe)
+        /// <summary>这个人背包里有没有私有的、这次手术要用的植入体。</summary>
+        public static bool OwnsImplant(Pawn pawn, RecipeDef recipe)
         {
-            if (patient == null || patient.Map == null || recipe == null) return;
-            int price = PriceOf(recipe, patient.Map);
-            if (price <= 0) return;
-            int paid = EconomyBank.TakePrivateSilver(patient.Map, patient, price);
-            Log.Message("[DSH-ECONOMY] 植入手术结算：" + patient.LabelShort + " 付 " + paid + " / " + price + " 银");
+            try
+            {
+                if (pawn == null || recipe == null || recipe.ingredients == null) return false;
+                if (pawn.inventory == null || pawn.inventory.innerContainer == null) return false;
+
+                for (int i = 0; i < recipe.ingredients.Count; i++)
+                {
+                    IngredientCount ing = recipe.ingredients[i];
+                    if (ing == null || ing.filter == null) continue;
+                    ThingDef d = ing.filter.AnyAllowedDef;
+                    if (d == null || !EconomyConsumption.IsImplantLike(d)) continue;
+
+                    IList<Thing> inner = pawn.inventory.innerContainer;
+                    for (int j = 0; j < inner.Count; j++)
+                    {
+                        Thing t = inner[j];
+                        if (t == null || t.Destroyed || t.def != d) continue;
+                        if (EconomyPrivate.OwnerOf(t) == pawn) return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
         }
+
+        // 旧版 Charge() 已删除：手术不再单独收钱（钱在购买时付过）。
     }
 }

@@ -129,10 +129,16 @@ namespace DshEconomy
                 try { twc.TryGetComp<CompItemTag>(); }
                 catch
                 {
+                    // 重建组件表会把 owner 一起抹掉 —— 先记住主人，重建完再打回去。
+                    // 这是"私有标签偶尔集体消失"的根源之一。
+                    Pawn oldOwner = null;
+                    try { oldOwner = OwnerOf(twc); } catch { }
+
                     try
                     {
                         twc.comps.Clear();
                         twc.InitializeComps();
+                        if (oldOwner != null) SetPrivate(twc, oldOwner);
                         fixedCount++;
                     }
                     catch { }

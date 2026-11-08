@@ -1,4 +1,4 @@
-﻿using RimWorld;
+using RimWorld;
 using UnityEngine;
 using Verse;
 
@@ -86,6 +86,19 @@ namespace DshEconomy
         public const float ScarcityRange = 0.15f;
 
         /// <summary>
+        /// 参考库存：约 2000 银的货折成多少件。
+        /// 返回 -1 = 原版没给这件东西标价，算不出来（面板显示"—"，稀缺度不参与）。
+        /// 上限按堆叠上限的 2 倍封顶，避免 0.1 银的东西算出 20000 件那种假数字。
+        /// </summary>
+        public static float ReferenceStock(ThingDef def)
+        {
+            if (def == null) return -1f;
+            float vanilla = EconomyValue.VanillaPrice(def);
+            if (vanilla <= 0.01f) return -1f;
+            return Mathf.Min(2000f / vanilla, Mathf.Max(2f, def.stackLimit * 2f));
+        }
+
+        /// <summary>
         /// 稀缺系数：库存相对"参考库存"的多寡，只在 1±15% 内线性摆动。
         /// 不改变价值本身，只让价格围绕价值波动。
         /// </summary>
@@ -96,7 +109,11 @@ namespace DshEconomy
             if (comp == null) return 1f;
 
             float value = Mathf.Max(0.1f, EconomyValue.Of(def, map));
-            float reference = Mathf.Clamp(2000f / value, 2f, 300f);
+            // 参考库存 = 2000 银 ÷ 原版市价。
+            // 用原版市价而不是我们算出来的价值：估值一旦偏离，参考库存会跟着偏，稀缺度又被放大一遍。
+            float reference = ReferenceStock(def);
+            // 原版没标价：不参与稀缺波动，免得 0.1 的兜底价算出"参考 20000 件"这种假数字。
+            if (reference < 0f) return 1f;
             int stock = comp.StockOf(def);
 
             // 正数 = 积压（跌价），负数 = 缺货（涨价）
@@ -150,7 +167,30 @@ namespace DshEconomy
         public static float UnitPrice(Thing thing, Map map)
         {
             if (thing == null) return 0f;
-            return UnitPrice(thing.def, map) * QualityFactor(thing) * PreferabilityFactor(thing);
+            float price = UnitPrice(thing.def, map) * QualityFactor(thing) * PreferabilityFactor(thing);
+
+            // 荤素：原版 CompIngredients 记下了这一碗实际用了哪些原料，
+            // 全肉的比全素的贵 30%。用比例而不是绝对原料价，避免把饭价推上天。
+            float meat = EconomyValue.MeatShare(thing);
+            if (meat > 0f) price *= 1f + 0.3f * meat;
+
+            // 真实配料：这一碗到底用虫肉还是牛肉，用 CompIngredients 记的实际原料重算成本。
+            // 不能用"比值夹在 0.5~2 倍"那种温和修正 —— 那样"一碗肉做的饭"会比生肉还便宜，
+            // 明显不合逻辑。这里直接用真实原料价替换平均原料价，劳动部分保持不变。
+            float avgCost = EconomyValue.MaterialCost(thing.def, map);
+            float realCost = EconomyValue.RealIngredientCost(thing);
+            if (realCost > 0.01f)
+            {
+                float value = EconomyValue.Of(thing.def, map);
+                if (value > 0.01f)
+                {
+                    float labor = Mathf.Max(0f, value - avgCost);
+                    float newValue = realCost + labor;
+                    price *= newValue / value;
+                }
+            }
+
+            return price;
         }
 
         /// <summary>食物等级倍率。餐食没有品质组件，但原版用 preferability 区分生食/简单/精致/丰盛。</summary>

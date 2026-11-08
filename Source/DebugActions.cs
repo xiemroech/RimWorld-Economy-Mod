@@ -264,6 +264,35 @@ namespace DshEconomy
             Log.Message("[DSH经济] 主货币：" + (currency != null ? currency.defName : "未找到"));
         }
 
+                [DebugAction("DSH经济", "私产诊断", actionType = DebugActionType.Action,
+            allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void DumpPrivateOwnership()
+        {
+            Map map = Find.CurrentMap;
+            if (map == null) return;
+
+            List<Pawn> crew = map.mapPawns.FreeColonists;
+            for (int i = 0; i < crew.Count; i++)
+            {
+                Pawn p = crew[i];
+                Log.Message("[DSH-ECONOMY] 私产诊断 " + p.LabelShort
+                    + "：私有银=" + EconomyBank.PrivateSilver(map, p)
+                    + " 私有物=" + EconomyPrivate.OwnedItems(p, map).Count + " 件");
+
+                if (p.inventory == null || p.inventory.innerContainer == null) continue;
+                IList<Thing> inner = p.inventory.innerContainer;
+                for (int j = 0; j < inner.Count; j++)
+                {
+                    Thing t = inner[j];
+                    if (t.def != ThingDefOf.Silver) continue;
+                    Log.Message("    背包银 " + t.stackCount
+                        + " 组件=" + (EconomyPrivate.TagOf(t) != null)
+                        + " 归属=" + (EconomyPrivate.OwnerOf(t) == null
+                            ? "无" : EconomyPrivate.OwnerOf(t).LabelShort));
+                }
+            }
+        }
+
         [DebugAction("DSH经济", "打印未归类物品", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         public static void PrintUncovered()
         {
