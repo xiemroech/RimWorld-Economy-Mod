@@ -159,11 +159,30 @@ namespace DshEconomy
             // 顶部：搜索框 + 只显示已设置
             Rect bar = new Rect(inner.x, inner.y, inner.width, 28f);
             Widgets.Label(new Rect(bar.x, bar.y + 4f, 50f, 24f), "搜索");
-            search = Widgets.TextField(new Rect(bar.x + 46f, bar.y + 2f, 260f, 24f), search ?? string.Empty);
+            search = Widgets.TextField(new Rect(bar.x + 46f, bar.y + 2f, 220f, 24f), search ?? string.Empty);
+            // 搜索框右边的"清除"：一键回到不搜索的状态
+            if ((search ?? string.Empty).Length > 0
+                && Widgets.ButtonText(new Rect(bar.x + 270f, bar.y + 2f, 52f, 24f), "清除"))
+                search = string.Empty;
 
 
-            List<ThingDef> all = AllowedDefs();
-            List<ThingDef> shown = Filtered(all);
+            List<ThingDef> all;
+            List<ThingDef> shown;
+            try
+            {
+                all = AllowedDefs();
+                shown = Filtered(all);
+            }
+            catch (System.Exception e)
+            {
+                // 以前这里一旦抛异常，整个列表区就是空白，什么提示都没有。
+                // 现在至少把原因打出来，并且不让窗口瘫掉。
+                Log.Error("[DSH-ECONOMY] 补货列表构建失败：" + e.GetType().Name + " " + e.Message
+                    + "\n" + e.StackTrace);
+                Widgets.Label(new Rect(inner.x, inner.y + 34f, inner.width, 60f),
+                    "列表构建失败：" + e.Message + "\n（详细信息见 Player.log）");
+                return;
+            }
             Widgets.Label(new Rect(bar.xMax - 240f, bar.y + 4f, 240f, 24f),
                 ("允许 " + all.Count + " 种 · 显示 " + shown.Count + " · 已占 " + Mathf.RoundToInt(RestockStore.TotalPct(comp)) + "%").Truncate(240f));
 
@@ -182,14 +201,37 @@ namespace DshEconomy
                 Rect row = new Rect(0f, y, view.width, rowH - 2f);
                 if (i % 2 == 0) Widgets.DrawAltRect(row);
 
-                Rect icon = new Rect(row.x + 2f, row.y + 4f, 26f, 26f);
+                Rect icon = new Rect(row.x + 28f, row.y + 4f, 26f, 26f);
                 Widgets.ThingIcon(icon, def);
                 Widgets.Label(new Rect(icon.xMax + 6f, row.y + 7f, 190f, 24f), def.LabelCap.Truncate(180f));
+
+                // 勾选框：勾上=这条规则启用（可以调占比/件数），取消=删掉这条规则
+                bool hadRule = rule != null;
+                bool on = hadRule;
+                Widgets.Checkbox(new Vector2(row.x + 2f, row.y + 5f), ref on);
+                if (on != hadRule)
+                {
+                    if (on)
+                    {
+                        rule = new RestockRule { def = def, pct = 10f };
+                        comp.rules.Add(rule);
+                        comp.detailed = true;
+                    }
+                    else
+                    {
+                        comp.rules.Remove(rule);
+                        rule = null;
+                    }
+                    // Normalize 要读 changed.pct，传 null 会空引用 —— 删规则时不用调它
+                    if (rule != null) RestockStore.Normalize(comp, rule);
+                }
+
                 if (rule == null)
                 {
-                    GUI.color = new Color(1f, 1f, 1f, 0.45f);
-                    Widgets.Label(new Rect(icon.xMax + 6f + 150f, row.y + 7f, 60f, 24f), "（未设）");
+                    GUI.color = new Color(1f, 1f, 1f, 0.55f);
+                    Widgets.Label(new Rect(icon.xMax + 6f + 150f, row.y + 7f, 320f, 24f), "未勾选（勾上才能调占比/件数）");
                     GUI.color = Color.white;
+                    continue;
                 }
 
                 // 容量统一按"件"算：
@@ -325,7 +367,7 @@ namespace DshEconomy
                 Log.Message("[RESTOCK] " + storage.LabelShort + " 读不到过滤器允许项（0 种），已退回全部物品列表：" + cachedDefs.Count + " 种");
             }
 
-            cachedDefs.Sort((a, b) => string.Compare(a.label, b.label, System.StringComparison.Ordinal));
+            cachedDefs.Sort((a, b) => string.Compare(a?.label ?? a?.defName ?? "", b?.label ?? b?.defName ?? "", System.StringComparison.Ordinal));
             return cachedDefs;
         }
 
@@ -337,14 +379,19 @@ namespace DshEconomy
             {
                 if (list.Count >= 300) break;
                 ThingDef d = all[i];
+                if (d == null) continue;
                 RestockRule rule = comp.rules.Find(r => r != null && r.def == d);
 
                 // 没搜索、也没勾「只看已设置」时，只显示已设规则的（否则几千行会卡）
                 if (q.Length == 0 && rule == null) continue;
                 if (q.Length > 0)
                 {
-                    if (d.label.IndexOf(q, System.StringComparison.OrdinalIgnoreCase) < 0
-                        && d.defName.IndexOf(q, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    // label / defName 都可能是 null（mod 里没填），直接 IndexOf 会抛空引用，
+                    // 整个列表就变空白了。这里先兜成空串。
+                    string lbl = d.label ?? string.Empty;
+                    string dn = d.defName ?? string.Empty;
+                    if (lbl.IndexOf(q, System.StringComparison.OrdinalIgnoreCase) < 0
+                        && dn.IndexOf(q, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
                 }
                 // 已设规则的排前面
                 if (rule != null) list.Insert(0, d);

@@ -564,6 +564,8 @@ namespace DshEconomy
             // 挖矿的工时另外存一份长期账：工资那边每期会清，这里不清，
             // 用来算"挖一件平均花多少人日"，从而给矿物定价。
             if (type == "Mining") EconomyProductionStats.NoteMiningLabor(rawTicks);
+            // 钓鱼：原版/CE 都没有"钓一条要多久"的字段，只能像挖矿一样记账。
+            if (type == "Fishing" || type == "Fish") EconomyProductionStats.NoteFishingLabor(rawTicks);
         }
 
         /// <summary>这个人本期各工作类型的原始工时（已按类型分好）。</summary>

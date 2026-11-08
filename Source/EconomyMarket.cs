@@ -122,7 +122,7 @@ namespace DshEconomy
 
         // ---------------- 下单（派搬运 job，不立刻扣钱） ----------------
 
-        public static bool StartPurchase(Map map, Pawn p, Thing stock, int count, float unitPrice,bool force = false)
+        public static bool StartPurchase(Map map, Pawn p, Thing stock, int count, float unitPrice,bool force = false, bool toInventory = false)
         {
             if (map == null || p == null || stock == null || stock.Destroyed || stock.stackCount <= 0) return false;
             // 器官/仿生体不参与日常冲动消费，但"这个人确实缺这个部位"时允许他买自己需要的
@@ -138,7 +138,10 @@ namespace DshEconomy
 
             Job job = JobMaker.MakeJob(JobDefOf.TakeInventory, stock);
             job.count = n;
-            job.haulMode = HaulMode.ToCellStorage;
+            // ToCellStorage = 抱着走、最后放进仓库（东西不进背包容器）；
+            // Undefined   = 让 Toils_Haul 自己决定，TakeInventory 会真的塞进背包
+            //               （随身口粮必须用这个，否则结算时背包里找不到）
+            job.haulMode = toInventory ? HaulMode.Undefined : HaulMode.ToCellStorage;
 
             pending[p] = new Pending
             {
@@ -153,7 +156,7 @@ namespace DshEconomy
             // 任务作废 → 不结算 → 货拿到手却不打标签（"买了不算买"）。
             p.jobs.TryTakeOrderedJob(job, JobTag.Misc);
 
-            DevLog.Msg("[DSH-ECONOMY] 下单：" + p.LabelShort + " → " + stock.LabelNoCount + "×" + n
+            DevLog.Msg("[TRACE] 下单 " + p.LabelShort + " → " + stock.def.defName + "×" + n
                 + " 强制=" + force + " 当前任务=" + (p.CurJob == null ? "无" : p.CurJob.def.defName));
             
             return true;
@@ -230,7 +233,22 @@ namespace DshEconomy
                 found = t;
                 break;
             }
-            if (found == null) return false;
+            // 有些人（例如随身口粮）取货后东西还在"手上"没进背包容器，
+            // 这时背包里是 0 件，必须去 carryTracker 找。
+            if (found == null && p.carryTracker != null && p.carryTracker.CarriedThing != null)
+            {
+                Thing carried = p.carryTracker.CarriedThing;
+                if (carried.def == rec.def) found = carried;
+            }
+
+            if (found == null)
+            {
+                DevLog.Msg("[TRACE] 结算 " + p.LabelShort + " 订单def=" + rec.def.defName
+                    + " 背包件数=" + inner.Count + " 找到=False");
+                return false;
+            }
+            DevLog.Msg("[TRACE] 结算 " + p.LabelShort + " 订单def=" + rec.def.defName
+                + " 背包件数=" + inner.Count + " 找到=True");
 
             // 扣钱、清订单。付款失败时这里必须直接退出：
             // 否则会继续给一件已经退回地上的货打私有标签（白拿）。
@@ -259,13 +277,19 @@ namespace DshEconomy
 
             IList<Thing> inner = p.inventory.innerContainer;
             Thing keep = null;
+            string keepKey = null;
             for (int i = inner.Count - 1; i >= 0; i--)
             {
                 Thing t = inner[i];
                 if (t == null || t.Destroyed) continue;
                 if (t.def != def) continue;
                 if (EconomyPrivate.OwnerOf(t) != p) continue;
-                if (keep == null) { keep = t; continue; }
+
+                string key = EconomyValue.IngredientKey(t);
+                if (keep == null) { keep = t; keepKey = key; continue; }
+
+                // 原料不同 = 价格不同，合并后这一堆值多少钱就没有答案了
+                if (!string.Equals(key, keepKey, System.StringComparison.Ordinal)) continue;
 
                 int room = keep.def.stackLimit - keep.stackCount;
                 if (room <= 0) break;

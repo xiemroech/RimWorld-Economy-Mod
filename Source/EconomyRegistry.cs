@@ -101,13 +101,18 @@ namespace DshEconomy
                 samples.Remove(containerCat);
             }
 
-            // CE 弹药：一律算「武器」类（弹药不是武器，但属于武器系统）
+            // 弹药：优先投到独立的「弹药」分类，没有这个分类才退回「武器」类。
+            // 判据用 CEAmmo.IsAmmoDef（CE 自己也不统一，只能按分类/tradeTag/名字猜）。
+            EconomyCategoryDef ammoCat = null;
             EconomyCategoryDef weaponCat = null;
             for (int i = 0; i < categories.Count; i++)
             {
-                if (categories[i] != null && categories[i].defName == "DshEco_Weapon") { weaponCat = categories[i]; break; }
+                if (categories[i] == null) continue;
+                if (ammoCat == null && categories[i].defName == "DshEco_Ammo") ammoCat = categories[i];
+                if (weaponCat == null && categories[i].defName == "DshEco_Weapon") weaponCat = categories[i];
             }
-            if (weaponCat != null)
+            EconomyCategoryDef ammoTarget = ammoCat != null ? ammoCat : weaponCat;
+            if (ammoTarget != null)
             {
                 List<ThingDef> allDefs2 = DefDatabase<ThingDef>.AllDefsListForReading;
                 for (int i = 0; i < allDefs2.Count; i++)
@@ -115,10 +120,13 @@ namespace DshEconomy
                     ThingDef d = allDefs2[i];
                     if (d == null || !CEAmmo.IsAmmoDef(d)) continue;
                     EconomyCategoryDef prev;
-                    if (lookup.TryGetValue(d, out prev) && prev != null && prev != weaponCat)
-                        byCategory[prev].Remove(d);
-                    lookup[d] = weaponCat;
-                    if (!byCategory[weaponCat].Contains(d)) byCategory[weaponCat].Add(d);
+                    if (lookup.TryGetValue(d, out prev) && prev != null && prev != ammoTarget)
+                    {
+                        List<ThingDef> old;
+                        if (byCategory.TryGetValue(prev, out old) && old != null) old.Remove(d);
+                    }
+                    lookup[d] = ammoTarget;
+                    if (!byCategory[ammoTarget].Contains(d)) byCategory[ammoTarget].Add(d);
                 }
             }
 

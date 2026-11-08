@@ -6,7 +6,7 @@ using Verse;
 namespace DshEconomy
 {
     /// <summary>
-    /// 小人的「经济」标签页：上半部分是公有空间（搬运中的公共物资），
+    /// 小人的「经济」标签页：上半部分是公有空间（还没打私有标签的集体物资），
     /// 中间一条横线，下半部分是私有空间（明确划给这个人的东西）。
     /// </summary>
     public class ITab_Pawn_Economy : ITab
@@ -65,7 +65,7 @@ namespace DshEconomy
             float y = 2f;
 
             // ── 公有空间 ──
-            Widgets.Label(new Rect(2f, y, viewRect.width, 22f), "公有空间（搬运中，仍属集体，不能私用）");
+            Widgets.Label(new Rect(2f, y, viewRect.width, 22f), "公有空间（集体所有，尚未私有化）");
             y += 24f;
             if (carried.Count == 0)
             {

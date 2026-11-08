@@ -14,6 +14,41 @@ namespace DshEconomy
     {
         public const float FreeThreshold = 100f;  // 只有 100%（完全公有）才免费自取；50% = 原版价，照常收费
 
+        /// <summary>
+        /// 没付钱就拿了/吃了东西：东西归他，并按"这件东西值多少钱"扣工作满意度。
+        /// 越贵扣得越多（偷一份珍贵巨兽人肉做成的饭，比偷一块生肉重得多）。
+        /// 全项目只有这一处定义扣分规则，其他路径一律调这里。
+        /// </summary>
+        public static void ChargeUnpaidPickup(Pawn p, Thing t)
+        {
+            try
+            {
+                if (p == null) return;
+                Map map = p.MapHeld;
+
+                float worth = 0f;
+                if (t != null && !t.Destroyed)
+                {
+                    if (EconomyPrivate.OwnerOf(t) == null) EconomyPrivate.SetPrivate(t, p);
+                    if (map != null)
+                        worth = Mathf.Max(0f, EconomyPrice.UnitPrice(t, map) * Mathf.Max(1, t.stackCount));
+                }
+
+                // 钱和满意度都按整数结算：
+                // 单价是浮点，但银币本身不认小数，扣分也没必要精确到小数点后。
+                int worthInt = Mathf.RoundToInt(worth);
+                int penInt = Mathf.Clamp(1 + worthInt / 30, 1, 12);
+                float pen = -penInt;
+
+                EconomySatisfactionEvents.Add(p, "道德指责（无力支付）", pen, 3);
+                EconomySatisfaction.Recompute(p);
+
+                Log.Message("[DSH-ECONOMY] 道德指责（无力支付）：" + p.LabelShort
+                    + " 欠 " + worthInt + " 银 → 满意度 -" + penInt + "，持续 3 天");
+            }
+            catch (Exception e) { Log.Warning("[DSH-ECONOMY] 未付钱结算失败：" + e.Message); }
+        }
+
         public static bool Patch(Harmony harmony)
         {
             try
@@ -86,10 +121,8 @@ namespace DshEconomy
                 if (have < price)
                 {
                     // 买不起就一分不扣，避免把整堆银币划走
-                    // 吃了/用了却没付钱（不论食物还是成瘾品）→ 道德指责
-                    // 标签不带食物名：否则每换一种食物就是一个新事件，永远叠不起来
-                    EconomySatisfactionEvents.Add(ingester, "道德指责（无力支付）", -1f, 3);
-                    EconomySatisfaction.Recompute(ingester);
+                    // 吃了/用了却没付钱（不论食物还是成瘾品）→ 按这件东西的价钱扣满意度
+                    ChargeUnpaidPickup(ingester, __instance);
                     Log.Message("[DSH-ECONOMY] 购买失败：" + ingester.LabelShort + " 想吃 "
                         + __instance.LabelNoCount + "，需要 " + price + "，只有 " + have);
                     return;

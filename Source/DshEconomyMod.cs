@@ -477,6 +477,11 @@ namespace DshEconomy
                     EconomyProductionStats.Reset();
                     Messages.Message("产地统计已清空", MessageTypeDefOf.NeutralEvent, false);
                 }
+                if (Widgets.ButtonText(new Rect(view.x + 444f, y, 140f, 26f), "食物诊断"))
+                {
+                    EconomyValue.DumpFoodBranch();
+                    Messages.Message("已打印到 Player.log（搜 [FOOD]）", MessageTypeDefOf.NeutralEvent, false);
+                }
                 y += 30f;
 
                 if (Widgets.ButtonText(new Rect(view.x, y, 140f, 26f), "征收所得税"))

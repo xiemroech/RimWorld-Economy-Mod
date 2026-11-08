@@ -23,7 +23,7 @@ namespace DshEconomy
 
         public static void Tick(Map map)
         {
-            try { RestockHoppers(map); } catch (System.Exception e) { EcoLog.WarnOnce("restock-hopper", e); }
+            // 料斗补货已按用户要求移除（没有应用到实际玩法，且会和 [PUB] 的收回逻辑互相拉扯）。
             if (map == null) return;
             int now = Find.TickManager.TicksGame;
             if (now - lastTick < Interval) return;
@@ -209,44 +209,10 @@ namespace DshEconomy
         }
 
 
-        /// <summary>营养膏机料斗：低于 6 顿饭的营养就补，一次只补一顿的量。</summary>
-        private static void RestockHoppers(Map map)
-        {
-            if (map == null) return;
-            float want = MealsTarget * NutritionPerMeal;
+        // 料斗补货（RestockHoppers）已删除：
+        // 它和 [PUB] 的"公共物品收回"逻辑会互相拉扯（补进去的公共食物又被判定为可回收），
+        // 而且这套玩法用户并未实际启用。将来要恢复，从版本历史里找回即可。
 
-            foreach (Building b in map.listerBuildings.allBuildingsColonist)
-            {
-                if (b == null || b.Destroyed || b.def == null || b.def.defName != "Hopper") continue;
-
-                IThingHolder holder = b as IThingHolder;
-                ThingOwner owner = holder != null ? holder.GetDirectlyHeldThings() : null;
-                if (owner == null) continue;
-
-                float have = 0f;
-                foreach (Thing t in owner)
-                {
-                    if (t != null && t.def != null && t.def.IsNutritionGivingIngestible)
-                        have += t.GetStatValue(StatDefOf.Nutrition) * t.stackCount;
-                }
-                if (have >= want) continue;
-
-                float need = want - have;
-                Thing source = FindFoodForHopper(map, b, need);
-                if (source == null) continue;
-
-                Pawn hauler = FindHaulerAny(map, source);
-                if (hauler == null) continue;
-
-                float per = source.GetStatValue(StatDefOf.Nutrition);
-                int count = per <= 0.001f ? 1 : Mathf.Clamp(Mathf.CeilToInt(need / per), 1, source.stackCount);
-
-                Job job = JobMaker.MakeJob(JobDefOf.HaulToContainer, source, b);
-                job.count = Mathf.Min(count, hauler.carryTracker.AvailableStackSpace(source.def));
-                if (job.count <= 0) continue;
-                hauler.jobs.TryTakeOrderedJob(job, JobTag.Misc);
-            }
-        }
 
         private static Thing FindFoodForHopper(Map map, Building hopper, float need)
         {

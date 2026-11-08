@@ -68,6 +68,9 @@ namespace DshEconomy
             if (IsMineral(def)) return 0f;
             if (PlantLaborPerUnit(def, map) > 0f) return 0f;
 
+            // 肉只按"肉"算，哪怕存在"把器官剁成肉"这种配方（人肉就是被它算成 120 的）。
+            if (IsButcheredMeat(def)) return MeatUnitCost(def);
+
             RecipeDef r = MakerOf(def);
             if (r == null)
             {
@@ -132,6 +135,9 @@ namespace DshEconomy
             // 只看配方会把它们算成"造出来的"。
             float plantT = PlantValue(def, map);
             if (plantT > 0f) return plantT;
+
+            // 肉只按"肉"算，哪怕存在"把器官剁成肉"这种配方。
+            if (IsButcheredMeat(def)) return MeatUnitLabor(def);
 
             RecipeDef r = MakerOf(def);
             if (r == null)
@@ -198,6 +204,14 @@ namespace DshEconomy
             // 能种出来的也先于配方：布、稻米原版都是种出来的
             float plantValue = PlantValue(def, map);
             if (plantValue > 0f) return plantValue;
+
+            // 肉也先于配方：mod 常给"把器官剁成肉"这类二次加工配方，
+            // 它不该决定一块肉值多少（否则人肉 120、鱼肉 0）。
+            if (IsButcheredMeat(def))
+            {
+                float meatCost = MeatUnitCost(def) + MeatUnitLabor(def);
+                if (meatCost > 0.01f) return meatCost;
+            }
 
             RecipeDef r = MakerOf(def);
 
@@ -373,7 +387,28 @@ namespace DshEconomy
             }
             catch { return 0f; }
         }
-
+        /// <summary>
+        /// 这一件的"原料签名"：把用了哪些原料排序拼成字符串。
+        /// 签名相同才算同一种东西，可以合并；不同就必须分开。
+        /// </summary>
+        public static string IngredientKey(Thing thing)
+        {
+            if (thing == null) return null;
+            try
+            {
+                CompIngredients comp = thing.TryGetComp<CompIngredients>();
+                 if (comp == null || comp.ingredients == null || comp.ingredients.Count == 0) return null;
+                List<string> names = new List<string>();
+                for (int i = 0; i < comp.ingredients.Count; i++)
+                {
+                    if (comp.ingredients[i] != null) names.Add(comp.ingredients[i].defName);
+                }
+                if (names.Count == 0) return null;
+                names.Sort(System.StringComparer.Ordinal);
+                return string.Join("|", names.ToArray());
+            }
+            catch { return null; }
+        }
         private static float MeatWeight(ThingDef d)
         {
             if (d == null || d.ingestible == null) return 0.5f;
@@ -402,6 +437,15 @@ namespace DshEconomy
         /// 0.05 ≈ 每天 1.2 小时（喂食、清洁、治疗）——这才接近实际。
         /// </summary>
         public const float RearingLaborShare = 0.05f;
+
+        /// <summary>是不是鱼（只能靠名字认，原版没有 Fish 这种 foodType）。</summary>
+        public static bool IsFish(ThingDef def)
+        {
+            if (def == null || def.defName == null) return false;
+            if (def.defName.IndexOf("Fish", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return def.label != null
+                && def.label.IndexOf("鱼", System.StringComparison.Ordinal) >= 0;
+        }
 
         /// <summary>是不是屠宰产物（原版的肉标志，不看 defName）。</summary>
         public static bool IsButcheredMeat(ThingDef def)
@@ -462,9 +506,10 @@ namespace DshEconomy
 
                         float total = c + v;
 
-                        // 最后一层保险：单价高出市价 10 倍以上的来源直接跳过，
-                        // 让另一种正常的动物来提供这块肉的价格。
-                        if (total <= 0f || total > Mathf.Max(1f, Fallback(meat)) * 10f) continue;
+                        // 上一版这里有一道"单价高出原版市价 10 倍就直接丢弃"的闸门。
+                        // 结果是把所有动物都丢了：饲养成本本来就远高于原版肉价（0.8~2.3），
+                        // 索引被清空 → 每块肉都算成 0。现在只丢"算不出来"的，不丢"算得贵"的。
+                        if (total <= 0f) continue;
                         float oldC;
                         float oldV;
                         if (meatUnitCost.TryGetValue(meat, out oldC)
@@ -481,24 +526,33 @@ namespace DshEconomy
             DevLog.Msg("[DSH-ECONOMY] 肉类来源索引：" + meatUnitCost.Count + " 种");
         }
 
-        /// <summary>每块肉的"养育成本"（饲料）。查不到返回 0（表示未知，不是免费）。</summary>
+        /// <summary>每块肉的"养育成本"（饲料）。查不到时退回原版市价（不是 0）。</summary>
         private static float MeatUnitCost(ThingDef def)
         {
             if (!IsButcheredMeat(def)) return 0f;
             BuildMeatIndex();
             float per;
             if (meatUnitCost != null && meatUnitCost.TryGetValue(def, out per)) return Mathf.Max(0f, per);
-            return 0f;
+            // 索引里没有这种肉（没有动物产它、或者动物数据缺失）：
+            // 退回原版市价，至少不会算成 0 让整套价格塌掉。
+            // 鱼没有饲养环节（饲料=0，全是钓鱼工时），所以饲料只取 0 成。
+            if (IsFish(def)) return 0f;
+            return Mathf.Max(0.1f, Fallback(def) * 0.8f);
         }
 
-        /// <summary>每块肉的"照料工时"价值。查不到返回 0。</summary>
+        /// <summary>每块肉的"照料工时"价值。查不到时按市价的 20% 折算（不是 0）。</summary>
         private static float MeatUnitLabor(ThingDef def)
         {
             if (!IsButcheredMeat(def)) return 0f;
             BuildMeatIndex();
             float per;
-            if (meatUnitLabor != null && meatUnitLabor.TryGetValue(def, out per)) return Mathf.Max(0f, per);
-            return 0f;
+            if (meatUnitLabor != null && meatUnitLabor.TryGetValue(def, out per) && per > 0f)
+                return Mathf.Max(0f, per);
+            // 索引没命中：鱼按"钓鱼工时账"算，其它动物把市价拆成 8 成饲料 + 2 成照料。
+            float perCatch = EconomyProductionStats.FishingTicksPerCatch();
+            if (perCatch > 0f && IsFish(def))
+                return Mathf.Max(0.05f, perCatch / GenDate.TicksPerDay * LaborDayValue());
+            return Mathf.Max(0.05f, Fallback(def) * 0.2f);
         }
 
         /// <summary>每点营养的饲料价：取最便宜的素食（市价 ÷ 营养值）。</summary>
@@ -1034,6 +1088,65 @@ namespace DshEconomy
             return false;
         }
 
+        /// <summary>
+        /// 临时探针：把"看起来该算成肉/作物、结果却算不出来"的食物逐条打印。
+        /// 只列可疑项，避免刷屏。诊断完就删。
+        /// </summary>
+        public static void DumpFoodBranch()
+        {
+            try
+            {
+                Map map = Find.CurrentMap;
+                if (map == null) map = Find.AnyPlayerHomeMap;
+                Log.Message("[FOOD] 开始诊断，当前地图=" + (map == null ? "无" : map.uniqueID.ToString()));
+                if (map == null) return;
+
+                List<ThingDef> all = DefDatabase<ThingDef>.AllDefsListForReading;
+                int shown = 0;
+                int scanned = 0;
+                for (int i = 0; i < all.Count && shown < 30; i++)
+                {
+                    ThingDef d = all[i];
+                    if (d == null || d.ingestible == null || d.defName == null) continue;
+                    scanned++;
+                    try
+                    {
+                        bool meatFlag = (d.ingestible.foodType & FoodTypeFlags.Meat) != 0;
+                        bool isMeat = IsButcheredMeat(d);
+                        float meatC = MeatUnitCost(d);
+                        float meatV = MeatUnitLabor(d);
+                        float plant = PlantLaborPerUnit(d, map);
+                        RecipeDef r = MakerOf(d);
+                        float c = MaterialCost(d, map);
+                        float v = LaborValue(d, map);
+
+                        // 可疑：有肉标志却没算出肉价；或者有作物工时、结果却全 0
+                        bool suspect = (meatFlag && meatC + meatV <= 0f)
+                            || (plant > 0f && c <= 0f && v <= 0f);
+                        if (!suspect) continue;
+
+                        Log.Message("[FOOD] " + d.defName
+                            + " 类型=" + d.ingestible.foodType
+                            + " 有配方=" + (r == null ? "无" : r.defName)
+                            + " 判肉=" + isMeat
+                            + " 肉c=" + meatC.ToString("0.##") + " 肉v=" + meatV.ToString("0.##")
+                            + " 作物=" + plant.ToString("0.#")
+                            + " → c=" + c.ToString("0.##") + " v=" + v.ToString("0.##"));
+                        shown++;
+                    }
+                    catch (System.Exception e)
+                    {
+                        Log.Warning("[FOOD] " + d.defName + " 抛异常：" + e.GetType().Name + " " + e.Message);
+                    }
+                }
+                Log.Message("[FOOD] 结束：扫描 " + scanned + " 种可吃物品，输出 " + shown + " 条可疑项");
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[FOOD] 诊断本身失败：" + e.Message);
+            }
+        }
+
         /// <summary>给"判断"窗用：这件东西被哪条规则定价，以及过程中每个判断的真假。</summary>
         public static string Explain(ThingDef def, Map map)
         {
@@ -1051,9 +1164,11 @@ namespace DshEconomy
                 else if (EconomyProductionStats.Dominant(def, out src)) hit = "实时统计 → " + src + "（已经采到 ≥3 次样本）";
                 else if (IsMineral(def)) hit = "静态：矿物 → 按市价，原料记 0";
                 else if (plant > 0f) hit = "静态：作物 → 播种+收割+生长系数";
+                // 肉必须排在配方前面：肉价来自"养出来的成本"，
+                // mod 里"把器官剁成肉"那类配方只是二次加工，不该决定肉价。
+                else if (meat > 0f) hit = "静态：肉 → 饲料 + 照料工时（忽略配方）";
                 else if (r != null) hit = "静态：配方 → (材料+工时) ÷ 产量";
                 else if (IsBuiltThing(def)) hit = "静态：建造物 → CostList + WorkToBuild";
-                else if (meat > 0f) hit = "静态：肉 → 饲料 + 照料工时";
                 else if (IsBodyPart(def)) hit = "静态：器官 → 基准价 1200 与市价取大";
                 else hit = "兜底 → 市价";
 
@@ -1066,6 +1181,9 @@ namespace DshEconomy
                     + "   肉成本=" + meat.ToString("0.#")
                     + "   市价=" + mv.ToString("0.#") + "\n"
                     + (plant > 0f ? "作物明细：" + PlantDetail(def, map) + "\n" : "")
+                    + (meat > 0f ? "肉明细：每件 饲料 " + MeatUnitCost(def).ToString("0.#")
+                        + " + 照料 " + MeatUnitLabor(def).ToString("0.#")
+                        + "（来源动物见肉表，取单价最低的那种）\n" : "")
                     + (IsMineral(def) ? "矿物明细：累计挖矿 " + (EconomyProductionStats.miningTicks / (float)GenDate.TicksPerDay).ToString("0.00")
                         + " 人日 / 已登记 " + EconomyProductionStats.TotalOf(EconomyProductionStats.Source.Mine)
                         + " 件 → 每件 " + MiningDaysPerUnit(map).ToString("0.000") + " 人日\n" : "")

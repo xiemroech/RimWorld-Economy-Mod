@@ -41,7 +41,13 @@ namespace DshEconomy
                 "搜索物品名 / defName：看它被哪条规则定价，以及每个判断的真假。");
             filter = Widgets.TextField(new Rect(0f, 26f, 300f, 24f), filter ?? "");
             if (Widgets.ButtonText(new Rect(308f, 26f, 80f, 24f), "刷新")) lastFilter = "\u0000";
-            Widgets.Label(new Rect(396f, 30f, inRect.width - 396f, 22f),
+            // 临时：食物定价诊断。放在这里是因为设置页的调试按钮要先勾"开发者模式"才显示，
+            // 而这个窗口随时能打开，少一层门槛。
+            if (Widgets.ButtonText(new Rect(392f, 26f, 96f, 24f), "诊断食物"))
+            {
+                EconomyValue.DumpFoodBranch();
+            }
+            Widgets.Label(new Rect(496f, 30f, inRect.width - 496f, 22f),
                 map == null ? "需要进入地图" : "共 " + rows.Count + " 条");
 
             if (map == null) return;

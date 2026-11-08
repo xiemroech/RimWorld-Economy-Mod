@@ -157,6 +157,35 @@ namespace DshEconomy
             if (miningTicks > 60000000f) miningTicks = 60000000f;   // 防溢出，约 1000 人日
         }
 
+        /// <summary>累计钓鱼原始工时（tick）。和挖矿一样，独立长期账。</summary>
+        public static float fishingTicks;
+
+        /// <summary>累计钓上来的条数（按"完成一次钓鱼"记 1 条）。</summary>
+        public static int fishingCount;
+
+        /// <summary>记一段钓鱼工时。</summary>
+        public static void NoteFishingLabor(float rawTicks)
+        {
+            if (rawTicks <= 0f) return;
+            fishingTicks += rawTicks;
+            if (fishingTicks > 60000000f) fishingTicks = 60000000f;
+        }
+
+        /// <summary>记一次"钓到东西"。没有产量字段可读，按次计。</summary>
+        public static void NoteFishingCatch(int n)
+        {
+            if (n <= 0) return;
+            fishingCount += n;
+            if (fishingCount > 100000) fishingCount = 100000;
+        }
+
+        /// <summary>平均一条鱼花多少 tick。样本不足返回 0。</summary>
+        public static float FishingTicksPerCatch()
+        {
+            if (fishingCount <= 0 || fishingTicks <= 0f) return 0f;
+            return fishingTicks / fishingCount;
+        }
+
         /// <summary>某一种来源一共记了多少件（跨所有物品）。</summary>
         public static int TotalOf(Source source)
         {

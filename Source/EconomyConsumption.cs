@@ -134,6 +134,15 @@ namespace DshEconomy
             List<Pawn> colonists = new List<Pawn>(map.mapPawns.FreeColonists);
             // 没有容器的人先买，避免"有空间的人顺手把箱子买光、没箱子的人永远买不到"
             colonists.Sort((a, b) => BuyPriority(a, map).CompareTo(BuyPriority(b, map)));
+            {
+                string roster = "";
+                for (int i = 0; i < colonists.Count; i++)
+                {
+                    if (i > 0) roster += "、";
+                    roster += colonists[i].LabelShort + (colonists[i].Downed ? "(倒地)" : "");
+                }
+                DevLog.Msg("[TRACE] 本轮购买名单（" + colonists.Count + " 人）：" + roster);
+            }
             for (int i = 0; i < colonists.Count; i++)
             {
                 Buy(map, comp, colonists[i]);
@@ -290,13 +299,20 @@ namespace DshEconomy
 
         private static void Buy(Map map, MapEconomyComponent comp, Pawn p)
         {
-            if (p == null || p.Dead || p.Downed || p.inventory == null) return;
+            if (p == null || p.Dead || p.Downed || p.inventory == null)
+            {
+                if (p != null && p.IsColonist)
+                    DevLog.Msg("[TRACE] 买? " + p.LabelShort + " 跳过：死亡=" + p.Dead
+                        + " 倒地=" + p.Downed + " 背包=" + (p.inventory != null));
+                return;
+            }
             LogStatsIfDue();
 
             // 自己还没有私有仓库 → 最高优先级买一个
             float freeRatio = EconomyPrivateStorageBehavior.FreeRatio(p, map, out _, out _);
             if (freeRatio < 0f)
             {
+                DevLog.Msg("[TRACE] 买? " + p.LabelShort + " 走容器分支：没有私有仓库");
                 TryBuyContainer(map, comp, p);
                 return;
             }
@@ -306,6 +322,8 @@ namespace DshEconomy
             {
                 if (TryBuyContainer(map, comp, p)) return;
 
+                DevLog.Msg("[TRACE] 买? " + p.LabelShort + " 走容器分支：空位不足 空位=" + freeRatio.ToString("0.00")
+                    + " 也买不到容器");
                 if (Rand.Chance(NoSpacePenaltyChance))
                 {
                     EconomySatisfactionEvents.Add(p, "私有仓库放不下", -2f, 1);
@@ -325,10 +343,18 @@ namespace DshEconomy
             }
 
             // 自己买的食物还没吃完 → 先吃自己的，不重复买
-            if (wantCat == "DshEco_Food" && HasPrivateFood(p, map)) return;
+            if (wantCat == "DshEco_Food" && HasPrivateFood(p, map))
+            {
+                DevLog.Msg("[TRACE] 不买 " + p.LabelShort + "：已有私有食物");
+                return;
+            }
 
             // 正在做饭：不要去买生食，等着吃刚做好的
-            if (IsCooking(p)) return;
+            if (IsCooking(p))
+            {
+                DevLog.Msg("[TRACE] 不买 " + p.LabelShort + "：正在做饭");
+                return;
+            }
 
             // 无力支付：钱不够一份最基础的食物 → 不去捡生肉，直接领一份免费的基础食物
             if (wantCat == "DshEco_Food" && IsBrokeForBasicFood(map, p))
@@ -362,7 +388,13 @@ namespace DshEconomy
                     if (stock == null) stock = PickFood(map, p, out fd, out price);
                 }
             }
-            if (stock == null) { StatNoStock++; RecordUnmet(p); return; }
+            if (stock == null)
+            {
+                StatNoStock++;
+                RecordUnmet(p);
+                DevLog.Msg("[TRACE] 不买 " + p.LabelShort + "：没有可买的货（分类=" + wantCat + "）");
+                return;
+            }
 
             bool fromMarket = EconomyMarket.InMarket(stock);
 
@@ -406,7 +438,11 @@ namespace DshEconomy
             // 攒够钱的目标大件不打折，直接买（否则永远"只攒不买"）
             if (goalCatNow != null) impulse = 1f;
 
-            if (!Rand.Chance(Mathf.Clamp01(impulse))) return;
+            if (!Rand.Chance(Mathf.Clamp01(impulse)))
+            {
+                DevLog.Msg("[TRACE] 不买 " + p.LabelShort + "：购买欲没掷中（欲望=" + impulse.ToString("0.00") + "）");
+                return;
+            }
 
             // 冲动成立、真要买了，才检查放不放得下
             if (!HasSpace(p))
@@ -448,10 +484,23 @@ namespace DshEconomy
                 int budgetCap = Mathf.Max(1, Mathf.FloorToInt(spendable * 0.3f / price));
                 buyCount = Mathf.Min(buyCount, Mathf.Min(affordable, budgetCap));
             }
-            if (buyCount <= 0) { StatBroke++; RecordUnmet(p); return; }
+            if (buyCount <= 0)
+            {
+                StatBroke++;
+                RecordUnmet(p);
+                DevLog.Msg("[TRACE] 不买 " + p.LabelShort + "：份数不足（价格=" + price.ToString("0.00")
+                    + " 可用=" + spendable + "）");
+                return;
+            }
             StatTry++;
             int costCheck = Mathf.CeilToInt(price * buyCount);
-            if (costCheck > 0 && spendable < costCheck) { StatBroke++; RecordUnmet(p); return; }
+            if (costCheck > 0 && spendable < costCheck)
+            {
+                StatBroke++;
+                RecordUnmet(p);
+                DevLog.Msg("[TRACE] 不买 " + p.LabelShort + "：钱不够（要=" + costCheck + " 有=" + spendable + "）");
+                return;
+            }
 
             // 只派"去拿货"的 job；钱等货真正进背包时再扣（见 EconomyMarket.OnInventoryAdded）
             bool started = EconomyMarket.StartPurchase(map, p, stock, buyCount, free ? 0f : price);

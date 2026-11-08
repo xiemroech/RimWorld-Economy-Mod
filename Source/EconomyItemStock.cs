@@ -34,6 +34,7 @@ namespace DshEconomy
             return 2;
         }
 
+        /// <summary>上限。衣物按财富放大（原版有背包/衣柜这种容量，富人本来就囤得多）。</summary>
         public static int MaxCount(ThingDef def)
         {
             if (def == null) return 1;
@@ -43,13 +44,23 @@ namespace DshEconomy
             return 4;
         }
 
+        /// <summary>衣物上限随财富走：穷人 4 件，富人最多 12 件。</summary>
+        public static int ApparelCap(Pawn p, Map map)
+        {
+            float wf = (p != null && map != null) ? EconomyConsumption.WealthFactor(p, map) : 1f;
+            // wf 大致落在 0.75~1.6：0.75→4，1.15→7，1.6→11
+            return Mathf.Clamp(4 + Mathf.RoundToInt((wf - 0.75f) * 8f), 4, 12);
+        }
+
         /// <summary>目标件数 = 基础件数 × 价格系数 × 财富系数，夹在 1–上限。</summary>
         public static int TargetCount(Pawn p, ThingDef def, Map map)
         {
             if (def == null) return 1;
             float wf = (p != null && map != null) ? EconomyConsumption.WealthFactor(p, map) : 1f;
             float raw = BaseCount(def) * PriceCoef(def, map) * wf;
-            return Mathf.Clamp(Mathf.RoundToInt(raw), 1, MaxCount(def));
+            int cap = MaxCount(def);
+            if (def.IsApparel && p != null && map != null) cap = ApparelCap(p, map);
+            return Mathf.Clamp(Mathf.RoundToInt(raw), 1, cap);
         }
 
         /// <summary>衣物层：内衣(OnSkin)/中衣(Middle)/外衣(Shell)。</summary>

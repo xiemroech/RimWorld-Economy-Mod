@@ -20,6 +20,9 @@ namespace DshEconomy
             try
             {
                 if (__instance == null || !__instance.Dead || __instance.relations == null) return;
+                // 只处理自由殖民者：囚犯、奴隶、客人、动物都没有"继承"这回事，
+                // 在面板上列出来只会是噪音（它们本来也不会有私产）。
+                if (!__instance.IsColonist) return;
 
                 Pawn heir = FindHeir(__instance);
                 List<Thing> owned = Collect(__instance);

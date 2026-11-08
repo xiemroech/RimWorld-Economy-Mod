@@ -108,6 +108,12 @@ namespace DshEconomy
         private static bool Handle(Pawn p, Map map)
         {
             if (p == null || p.Dead || p.Downed || p.inventory == null || p.MapHeld != map) return true;
+            // 正在"往背包里拿东西"的这一刻先放过：任务还没结束，
+            // 补结算（EndCurrentJob 里）马上就要给这件东西打私有标签。
+            // 以前这里会抢先把刚拿到的食物当公共物品收回/丢下，
+            // 结果就是"捡了、扣了分、东西又回到公有空间"。
+            Job cur = p.jobs != null ? p.jobs.curJob : null;
+            if (cur != null && cur.def == JobDefOf.TakeInventory) return true;
             Thing silver = FindPublicSilver(p);
             if (silver == null) return true; // 没有了，登记作废
             diagFound++;

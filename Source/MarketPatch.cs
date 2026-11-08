@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text;
 using HarmonyLib;
 using RimWorld;
 using Verse;
 using Verse.AI;
+using UnityEngine;
 
 namespace DshEconomy
 {
@@ -15,6 +17,22 @@ namespace DshEconomy
     {
         public static bool Patch(Harmony harmony)
         {
+            MethodInfo stackM = AccessTools.Method(typeof(Thing), "CanStackWith", new[] { typeof(Thing) });
+            if (stackM != null)
+            {
+                harmony.Patch(stackM, prefix: new HarmonyMethod(typeof(MarketPatch).GetMethod(
+                    nameof(NoMergeDifferentIngredients), BindingFlags.Static | BindingFlags.NonPublic)));
+            }
+            // 真正的合并动作在 TryAbsorbStack 里。CanStackWith 只是"能不能"，
+            // 地面物品并堆经常绕过它直接吞噬，所以还得挂这里。
+            MethodInfo absorb = AccessTools.Method(typeof(Thing), "TryAbsorbStack", new[] { typeof(Thing), typeof(bool) });
+            if (absorb != null)
+            {
+                harmony.Patch(absorb, prefix: new HarmonyMethod(typeof(MarketPatch).GetMethod(
+                    nameof(NoAbsorbDifferentIngredients), BindingFlags.Static | BindingFlags.NonPublic)));
+            }
+            // 只搬不捡：禁止把地上的公共物品捡进背包（有订单的购买/救济例外）。
+            HookJobGiverProbe(harmony);
             MethodInfo target = AccessTools.Method(typeof(ThingOwner<Thing>), "TryAdd", new[] { typeof(Thing), typeof(bool) });
             if (target == null)
             {
@@ -166,7 +184,15 @@ namespace DshEconomy
             if (mineableField == null) return;
             ThingDef prod = mineableField.GetValue(__instance.def.building) as ThingDef;
             if (prod == null) return;
-            EconomyProductionStats.Note(prod, EconomyProductionStats.Source.Mine, 1);
+            // 一块矿能挖出好几件（mineableYield），只记 1 件会把"每件工时"抬高好几倍，
+            // 于是矿物价格被算贵。有 yield 就按 yield 记。
+            int yield = 1;
+            try
+            {
+                if (__instance.def.building.mineableYield > 0) yield = __instance.def.building.mineableYield;
+            }
+            catch { yield = 1; }
+            EconomyProductionStats.Note(prod, EconomyProductionStats.Source.Mine, yield);
         }
 
         private static void HarvestPostfix(ref Thing __result)
@@ -353,15 +379,430 @@ namespace DshEconomy
                 + " 原因=" + condition
                 + " 任务=" + (__instance.curJob == null ? "无" : __instance.curJob.def.defName));
         }
+
+        /// <summary>
+        /// 原料不同的食物不许合并：价格是按原料算的，混堆会让两种价格变成一种。
+        /// 原版只看 def 相同就合并，正好和我们的定价依据冲突。
+        /// </summary>
+        private static void NoMergeDifferentIngredients(Thing __instance, Thing other, ref bool __result)
+        {
+            try
+            {
+                string a = EconomyValue.IngredientKey(__instance);
+                if (a == null) return;                       // 没原料记录（不是食物）→ 交给原版
+                string b = EconomyValue.IngredientKey(other);
+                if (!string.Equals(a, b, System.StringComparison.Ordinal))
+                    __result = false;                        // 用 false 覆盖原版结果
+            }
+            catch { }
+        }
+        
+        /// <summary>
+        /// 真正的合并动作。CanStackWith 只是"能不能"，地面物品并堆经常绕过它直接吞噬，
+        /// 所以这里也要拦一次：prefix 返回 false = 不执行原方法 = 不合并。
+        /// </summary>
+        private static bool NoAbsorbDifferentIngredients(Thing __instance, Thing other, ref bool __result)
+        {
+            try
+            {
+                string a = EconomyValue.IngredientKey(__instance);
+                if (a == null) return true;                  // 没原料记录（不是食物）→ 交给原版
+                string b = EconomyValue.IngredientKey(other);
+                if (!string.Equals(a, b, System.StringComparison.Ordinal))
+                {
+                    __result = false;
+                    return false;
+                }
+            }
+            catch { }
+            return true;
+        }
+
+        // ---------------- 只搬不捡 ----------------
+
+        /// <summary>
+        /// 禁止"把地上的公共物品捡进背包"。
+        /// 这个 mod 的定价和归属都按订单走：捡起来的东西没有订单，
+        /// 就会变成"公有物品躺在私人背包里"，既算不出价也判不出归属。
+        /// 搬运（地面→地面）不受影响，因为那本来就没有归属问题。
+        /// </summary>
+        private static bool NoFreePickup(Pawn_JobTracker __instance, Job __0)
+        {
+            Job job = __0;
+            try
+            {
+                // 功能已移除（"只搬不捡"会让 AI 反复重试、看起来卡原地）。
+                // 现在一律放行：捡起来的东西由 PackFood 记账或 [PUB] 收回处理。
+                return true;
+
+                Pawn p = __instance != null ? __instance.pawn : null;
+                if (p == null || !p.IsColonist) return true;
+                if (EconomyMarket.HasPending(p)) return true;         // 有订单 = 购买/救济，放行
+
+                Thing t = job.targetA.Thing;
+                if (t == null || t.Destroyed) return true;
+                if (IsAmmo(t.def)) return true;                        // 弹药豁免
+
+                return false;                                          // 无订单的"白捡"，拒绝
+            }
+            catch { return true; }
+        }
+
+        /// <summary>
+        /// 是不是弹药。CE 之类的弹药分类是 mod 加的，不能写死 ThingCategoryDefOf，
+        /// 所以按"分类名或 defName 里含 Ammo/Bullet/Shell/弹药"判断；查不到就当作不是。
+        /// </summary>
+        private static bool IsAmmo(ThingDef def)
+        {
+            if (def == null) return false;
+            try
+            {
+                if (def.defName != null)
+                {
+                    string n = def.defName;
+                    if (n.IndexOf("Ammo", System.StringComparison.OrdinalIgnoreCase) >= 0
+                        || n.IndexOf("Bullet", System.StringComparison.OrdinalIgnoreCase) >= 0
+                        || n.IndexOf("Shell", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                }
+                if (def.thingCategories != null)
+                {
+                    for (int i = 0; i < def.thingCategories.Count; i++)
+                    {
+                        ThingCategoryDef c = def.thingCategories[i];
+                        if (c == null || c.defName == null) continue;
+                        if (c.defName.IndexOf("Ammo", System.StringComparison.OrdinalIgnoreCase) >= 0
+                            || c.defName.IndexOf("弹药", System.StringComparison.Ordinal) >= 0) return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static int lastPickupTraceTick = -99999;
+
+        /// <summary>
+        /// 路径反查：谁派发了 TakeInventory(拾取) 任务。
+        /// 只在真的派了拾取时打印调用栈，每 30 tick 最多一次，避免刷屏。
+        /// </summary>
+        private static void TracePickupSource(Pawn_JobTracker __instance, Job __0)
+        {
+            try
+            {
+                if (__0 == null || __0.def != JobDefOf.TakeInventory) return;
+                int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+                if (now - lastPickupTraceTick < 30) return;
+                lastPickupTraceTick = now;
+
+                Pawn p = __instance != null ? __instance.pawn : null;
+                StringBuilder sb = new StringBuilder();
+                sb.Append("[TRACE] 谁派的拾取：").Append(p != null ? p.LabelShort : "?");
+                sb.Append(" 目标=").Append(__0.targetA.Thing != null ? __0.targetA.Thing.LabelShort : "无");
+                sb.Append(" 数量=").Append(__0.count);
+
+                System.Diagnostics.StackTrace st = new System.Diagnostics.StackTrace(1, false);
+                int n = 0;
+                for (int i = 0; i < st.FrameCount && n < 14; i++)
+                {
+                    System.Diagnostics.StackFrame f = st.GetFrame(i);
+                    MethodBase mb = f != null ? f.GetMethod() : null;
+                    if (mb == null || mb.DeclaringType == null) continue;
+                    string tn = mb.DeclaringType.Name;
+                    if (tn == "StackTrace") continue;
+                    sb.Append(" ← ").Append(tn).Append('.').Append(mb.Name);
+                    n++;
+                }
+                Log.Message(sb.ToString());
+            }
+            catch { }
+        }
+
+        private static void HookNoFreePickup(Harmony harmony)
+        {
+            try
+            {
+                int hooked = 0;
+                MethodInfo[] ms = typeof(Pawn_JobTracker).GetMethods(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                for (int i = 0; i < ms.Length; i++)
+                {
+                    if (ms[i].Name != "StartJob" && ms[i].Name != "TryTakeOrderedJob") continue;
+                    ParameterInfo[] ps = ms[i].GetParameters();
+                    if (ps.Length < 1 || ps[0].ParameterType != typeof(Job)) continue;
+                    try
+                    {
+                        harmony.Patch(ms[i],
+                            prefix: new HarmonyMethod(typeof(MarketPatch).GetMethod(
+                                nameof(NoFreePickup), BindingFlags.Static | BindingFlags.NonPublic)),
+                            postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(
+                                nameof(TracePickupSource), BindingFlags.Static | BindingFlags.NonPublic)));
+                        hooked++;
+                    }
+                    catch { }
+                }
+                Log.Message("[DSH-ECONOMY] 只搬不捡：已挂 " + hooked + " 个派活入口");
+            }
+            catch (Exception e) { Log.Warning("[DSH-ECONOMY] 只搬不捡挂载失败：" + e.Message); }
+        }
+
+        // ---------------- 思考树点名：谁派的拾取 ----------------
+        // 栈追踪会被 JIT 内联吃掉调用层，"谁派的"查不出来。
+        // 但每个 JobGiver 出任务时都会经过 TryIssueJobPackage，this 就是那个 JobGiver 实例，
+        // 类名直接给出答案，不受内联影响。
+
+        private static void HookJobGiverProbe(Harmony harmony)
+        {
+            try
+            {
+                // 只挂基类不够：绝大多数 JobGiver 都 override 了 TryIssueJobPackage，
+                // 必须把基类和所有子类各自声明的那个方法都挂上。
+                List<Type> types = new List<Type>();
+                types.Add(typeof(ThinkNode_JobGiver));
+                try { types.AddRange(typeof(ThinkNode_JobGiver).AllSubclasses()); }
+                catch { }
+
+                int hooked = 0;
+                for (int t = 0; t < types.Count; t++)
+                {
+                    MethodInfo[] ms;
+                    try
+                    {
+                        ms = types[t].GetMethods(BindingFlags.Public | BindingFlags.NonPublic
+                            | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                    }
+                    catch { continue; }
+
+                    for (int i = 0; i < ms.Length; i++)
+                    {
+                        if (ms[i].Name != "TryIssueJobPackage") continue;
+                        if (ms[i].ReturnType == null || ms[i].ReturnType.Name != "ThinkResult") continue;
+                        try
+                        {
+                            harmony.Patch(ms[i], postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(
+                                nameof(JobGiverProbePostfix), BindingFlags.Static | BindingFlags.NonPublic)));
+                            hooked++;
+                        }
+                        catch { }
+                    }
+                }
+                DevLog.Msg("[DSH-ECONOMY] 思考树点名：已挂 " + hooked + " 个 JobGiver 出口（类型 " + types.Count + " 个）");
+            }
+            catch (Exception e) { Log.Warning("[DSH-ECONOMY] 思考树点名挂载失败：" + e.Message); }
+        }
+
+        // 欠账的口粮：小人是"没付钱拿的"，但东西归他，同时要扣工作满意度。
+        // key = pawn.GetUniqueLoadID()，value = 物品 defName（到手后按这个找背包里那件）。
+        private static readonly Dictionary<string, string> packFoodDebt = new Dictionary<string, string>();
+
+        /// <summary>
+        /// 原版 PackFood 拿的东西到手后：打私有标签 + 记一条"道德指责（无力支付）"。
+        /// 这样"没付钱"是有代价的，但东西仍然归他，不会出现"拿了却不属于任何人"。
+        /// </summary>
+        private static void SettlePackFoodDebt(Pawn p)
+        {
+            try
+            {
+                if (p == null) return;
+                string key = p.GetUniqueLoadID();
+                string defName;
+                if (!packFoodDebt.TryGetValue(key, out defName)) return;
+                if (defName == null) { packFoodDebt.Remove(key); return; }
+
+                Thing found = null;
+
+                if (p.inventory != null && p.inventory.innerContainer != null)
+                {
+                    for (int i = 0; i < p.inventory.innerContainer.Count; i++)
+                    {
+                        Thing t = p.inventory.innerContainer[i];
+                        if (t == null || t.Destroyed) continue;
+                        if (t.def == null || t.def.defName != defName) continue;
+                        if (EconomyPrivate.OwnerOf(t) != null) continue;
+                        found = t;
+                        break;
+                    }
+                }
+
+                // 还在"手上"的情况：原版 PackFood 取货期间东西在 carryTracker，
+                // 不进背包容器，这里同样要认。
+                if (found == null && p.carryTracker != null && p.carryTracker.CarriedThing != null)
+                {
+                    Thing carried = p.carryTracker.CarriedThing;
+                    if (carried.def != null && carried.def.defName == defName
+                        && EconomyPrivate.OwnerOf(carried) == null)
+                        found = carried;
+                }
+
+                if (found == null)
+                {
+                    // 没找到就**不要**清账：可能是还没拿完，或者被打断后他又去拿了一次。
+                    // 清掉的话这件东西就永远留在"公有空间"里了。
+                    DevLog.Msg("[TRACE] 随身口粮待结算：没找到 " + defName + "，账留着");
+                    return;
+                }
+
+                packFoodDebt.Remove(key);
+                // 扣分规则只在 EconomyPurchase.ChargeUnpaidPickup 一处定义：
+                // 它会打私有标签、按这件东西的价钱扣满意度，并按同名事件叠层。
+                EconomyPurchase.ChargeUnpaidPickup(p, found);
+                DevLog.Msg("[TRACE] 随身口粮结算 " + p.LabelShort + "：" + defName + " → 私有");
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[DSH-ECONOMY] 随身口粮结算失败：" + e.Message);
+            }
+        }
+
+        private static void JobGiverProbePostfix(ThinkNode_JobGiver __instance, Pawn __0, ref ThinkResult __result)
+        {
+            try
+            {
+                Job job = __result.Job;
+                if (job == null || job.def != JobDefOf.TakeInventory) return;
+
+                Thing t = job.targetA.Thing;
+                string giver = __instance == null ? "?" : __instance.GetType().Name;
+
+                // 只接管原版"随身带口粮"这一条路径。
+                if (giver != "JobGiver_PackFood") return;
+
+                Pawn p = __0;
+                if (p == null || !p.IsColonist || t == null) return;
+                if (t.Destroyed || t.stackCount <= 0) return;
+
+                // 已经有主的（他自己的私有物品）就别管，让原版照常。
+                if (EconomyPrivate.OwnerOf(t) != null) return;
+
+                Map map = p.MapHeld;
+                if (map == null) return;
+
+                int n = Mathf.Clamp(job.count < 1 ? 1 : job.count, 1, t.stackCount);
+                float unit = EconomyPrice.UnitPrice(t, map);
+                int cost = Mathf.CeilToInt(unit * n);
+
+                // 钱不够：不拦原版（拦了队伍准备不了行装），但记一笔账，
+                // 到手后由 EndJobPostfix 打私有标签并扣"道德指责（无力支付）"。
+                if (EconomyBank.PrivateSilver(map, p) < cost)
+                {
+                    packFoodDebt[p.GetUniqueLoadID()] = t.def.defName;
+                    DevLog.Msg("[TRACE] 随身口粮 " + p.LabelShort + "：" + t.LabelShort + "×" + n
+                        + " 买不起（要 " + cost + "，有 " + EconomyBank.PrivateSilver(map, p)
+                        + "），让他拿，拿到后转私有并扣满意度");
+                    return;
+                }
+
+                // 能买得起：取消原版的免费拿，改成 mod 的订单（到手时扣钱并打私有标签）。
+                // toInventory: true —— 随身口粮必须真的塞进背包容器，
+                // 否则它会被抱着走去仓库，背包里永远是 0 件，结算找不到东西。
+                if (EconomyMarket.StartPurchase(map, p, t, n, unit, false, true))
+                {
+                    __result = ThinkResult.NoJob;
+                    DevLog.Msg("[TRACE] 随身口粮 " + p.LabelShort + "：" + t.LabelShort + "×" + n
+                        + " 转为私有购买（预算 " + cost + " 银）");
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 拾取（没有订单）落地后的补结算：背包里的那份食物转私有，并按件值扣满意度。
+        /// 触发场景：本来是搬运任务，执行时被 AI 换成了"装进背包"，于是既不算买、也没标签。
+        /// 只处理食物；已经被打过标签的不管（避免和 PackFood / 购买结算重复扣）。
+        /// </summary>
+        private static void SettleUnpaidPickup(Pawn p, Job job)
+        {
+            try
+            {
+                if (p == null || job == null) return;
+                DevLog.Msg("[TRACE] 补结算入口 " + p.LabelShort
+                    + " 任务=" + (job.def == null ? "无" : job.def.defName)
+                    + " 有目标=" + (job.targetA.Thing != null));
+                if (job.def != JobDefOf.TakeInventory) return;
+                if (!job.targetA.HasThing) return;
+
+                Thing target = job.targetA.Thing;
+                if (target == null) return;
+
+                // 注意：不检查 target.Destroyed。
+                // 拾取完成时，地上那一堆已经被并进背包并销毁，
+                // 这个引用还在、def 还能读；一旦检查 Destroyed 就会在这里直接返回，
+                // 于是"补结算"永远不触发（这就是上一版没生效的原因）。
+                ThingDef def = target.def;
+                if (def == null || def.ingestible == null)
+                {
+                    DevLog.Msg("[TRACE] 补结算跳过：" + (def == null ? "def=空" : def.defName + " 不是食物"));
+                    return;
+                }
+                if (p.inventory == null || p.inventory.innerContainer == null) return;
+
+                IList<Thing> inner = p.inventory.innerContainer;
+                for (int i = 0; i < inner.Count; i++)
+                {
+                    Thing t = inner[i];
+                    if (t == null || t.Destroyed || t.def != def) continue;
+                    if (EconomyPrivate.OwnerOf(t) != null)
+                    {
+                        DevLog.Msg("[TRACE] 补结算跳过：" + def.defName + " 已经有主（" + EconomyPrivate.OwnerOf(t).LabelShort + "）");
+                        return;
+                    }
+
+                    EconomyPurchase.ChargeUnpaidPickup(p, t);
+                    DevLog.Msg("[TRACE] 拾取补结算 " + p.LabelShort + "：" + def.defName + "×" + t.stackCount);
+                    return;
+                }
+                // 东西可能还在"手上"（haulMode = ToCellStorage 时是抱着走的，
+                // 不会进背包容器），这时背包里是 0 件，要去 carryTracker 找。
+                if (p.carryTracker != null && p.carryTracker.CarriedThing != null
+                    && p.carryTracker.CarriedThing.def == def
+                    && EconomyPrivate.OwnerOf(p.carryTracker.CarriedThing) == null)
+                {
+                    EconomyPurchase.ChargeUnpaidPickup(p, p.carryTracker.CarriedThing);
+                    DevLog.Msg("[TRACE] 拾取补结算（手上）" + p.LabelShort + "：" + def.defName);
+                    return;
+                }
+
+                DevLog.Msg("[TRACE] 补结算跳过：背包里找不到未打标签的 " + def.defName
+                    + "（背包共 " + inner.Count + " 件）");
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[DSH-ECONOMY] 拾取补结算失败：" + e.Message);
+            }
+        }
+
         /// <summary>任务正常成功结束后，就地结算订单。</summary>
         private static void EndJobPostfix(Pawn_JobTracker __instance, JobCondition condition)
         {
             Pawn p = __instance.pawn;
             if (p != null && p.IsColonist) TryNoteAnimalGather(__instance.curJob);
-            if (condition != JobCondition.Succeeded) return;
+
+            if (p != null && p.IsColonist)
+            {
+                DevLog.Msg("[TRACE] 任务结束 " + p.LabelShort
+                    + " 任务=" + (__instance.curJob == null ? "无" : __instance.curJob.def.defName)
+                    + " 原因=" + condition + " 有订单=" + EconomyMarket.HasPending(p));
+            }
+
             if (p == null || !p.IsColonist) return;
-            if (!EconomyMarket.HasPending(p)) return;
-            EconomyMarket.SettleFromInventory(p);
+
+            // 不管成功还是被打断，只要东西已经在背包里就结账。
+            // 以前这里有个洞：有订单、但任务被思考树打断 →
+            //   - SettleUnpaidPickup 因为"有订单"被跳过
+            //   - SettleFromInventory 因为"不是 Succeeded"也被跳过
+            //   → 食物永远留在公有空间，标签永远打不上。
+            bool settled = EconomyMarket.HasPending(p) && EconomyMarket.SettleFromInventory(p);
+
+            if (!settled)
+            {
+                // 没有订单（或者订单结算失败/被打断）：这是"原版免费拿了"的路径，
+                // 转私有 + 按件值扣满意度。
+                SettlePackFoodDebt(p);
+                SettleUnpaidPickup(p, __instance.curJob);
+            }
+
+            if (condition != JobCondition.Succeeded) return;
+
+            if (EconomyMarket.HasPending(p)) EconomyMarket.SettleFromInventory(p);
         }
 
         // ── 动物产出（毛/奶/蛋）：1.7 没有可挂的 Gather() 方法，只有 get_xxx 属性。

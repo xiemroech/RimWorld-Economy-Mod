@@ -64,6 +64,22 @@
     </matchThingCategories>
   </DshEconomy.EconomyCategoryDef>
 
+  <!--
+    弹药：独立一列，单独设社会化程度。
+    注意这里**不写 matchThingCategories**：原版没有「弹药」这个 ThingCategory，
+    Combat Extended 之类才加，而且名字各家不同。所以这一列由代码认领
+    （EconomyRegistry 里的 CEAmmo.IsAmmoDef），XML 只负责定义分类本身。
+    没装弹药 mod 时这一列就是空的，不会报错。
+  -->
+  <DshEconomy.EconomyCategoryDef>
+    <defName>DshEco_Ammo</defName>
+    <label>弹药</label>
+    <description>弹匣、炮弹、火箭弹等消耗性弹药。和武器分开社会化：武器要发给士兵，弹药是消耗品。</description>
+    <priority>68</priority>
+    <defaultPublicization>50</defaultPublicization>
+    <priceFactor>1.0</priceFactor>
+  </DshEconomy.EconomyCategoryDef>
+
   <DshEconomy.EconomyCategoryDef>
     <defName>DshEco_Weapon</defName>
     <label>武器</label>
