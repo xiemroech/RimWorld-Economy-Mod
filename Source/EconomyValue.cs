@@ -127,8 +127,8 @@ namespace DshEconomy
                 }
             }
 
-            // 矿物：原料成本为 0，全部算作挖矿劳动（见 LaborValue）
-            if (def != null && IsMineral(def)) return 0f;
+            // 矿物：原料成本为 0，劳动价值在下面 MineralValue 里给（实测挖矿工时换钱）。
+            // 这里**不能** return 0 —— 那会把劳动列整列抹掉，和 Compute 算出来的价值对不上。
 
             // 能种出来的东西：价值全在"播种+收割"里，放在配方之前。
             // 《布》《稻米》这类原版是种出来的，mod 常又给一条织布/碾米配方，

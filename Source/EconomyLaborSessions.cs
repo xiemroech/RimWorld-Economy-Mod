@@ -112,6 +112,25 @@ namespace DshEconomy
                 {
                     comp.AddWorkHours(p, s.workType, raw);
                     comp.AddDailyWork(p, raw);
+
+                    // 工作类型是从 WorkGiver 产出 Job 的那一刻记下来的。但原版很多工作
+                    // （挖矿、钓鱼）重写的是 JobOnThing，补丁挂在基类上抓不到，
+                    // 于是 workType 是 null、工时不进 Mining 那一栏。
+                    // 这里按 JobDef 兜底再记一次，只喂"定价用的长期账本"，不动工资口径。
+                    if (s.def != null)
+                    {
+                        bool workTypeSaysMining = s.workType != null && s.workType.defName == "Mining";
+                        string dn = s.def.defName;
+                        if (!workTypeSaysMining && dn == "Mine")
+                        {
+                            EconomyProductionStats.NoteMiningLabor(raw);
+                        }
+                        else if ((dn == "Fish" || dn == "Fishing" || dn == "FishBite")
+                                 && (s.workType == null || s.workType.defName != "Fishing"))
+                        {
+                            EconomyProductionStats.NoteFishingLabor(raw);
+                        }
+                    }
                 }
 
                 // 采矿：会话结束时矿已经没了，按矿石产出记一笔（没有工单，只能这样归属）

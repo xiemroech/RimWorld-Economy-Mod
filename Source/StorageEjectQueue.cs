@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using Verse;
 
@@ -38,10 +38,26 @@ namespace DshEconomy
                 if (t == null || t.Destroyed || !t.Spawned) continue;
                 if (t.Map != map) continue;
 
-                Pawn storeOwner = PrivateStorageHaulPatch.OwnerAt(map, t.Position);
                 Pawn itemOwner = EconomyPrivate.OwnerOf(t);
                 if (itemOwner == null) continue;              // 公共物品不动
-                if (itemOwner == storeOwner) continue;        // 物主自己的格，正常
+
+                // 判"这个容器归谁"优先于"这块地板归谁"：
+                // 物主把自己的箱子摆进公共房间时，格子归属是 null，
+                // 但箱子本身归他，属于正常存放，不能弹。
+                SlotGroup group = t.GetSlotGroup();
+                Pawn groupOwner = group != null ? EconomyPrivateStorageBehavior.OwnerOfGroup(group) : null;
+                if (groupOwner == itemOwner) continue;        // 自己的箱子，正常
+
+                Pawn storeOwner;
+                if (groupOwner != null)
+                {
+                    storeOwner = groupOwner;                  // 别人的箱子，弹
+                }
+                else
+                {
+                    storeOwner = PrivateStorageHaulPatch.OwnerAt(map, t.Position);
+                    if (itemOwner == storeOwner) continue;    // 公共存放组，但格子属于物主，正常
+                }
 
                 // storeOwner == null 就是公共存储，这里必须也弹出
 

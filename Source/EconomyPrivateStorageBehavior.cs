@@ -668,11 +668,22 @@ namespace DshEconomy
                 SlotGroup g = t.GetSlotGroup();
                 if (g == null) continue;              // 没在存储里，地上放着不管
 
-                Pawn cellOwner = EconomyRealEstate.OwnerAtCell(map, t.Position);
-                if (cellOwner == owner) continue;      // 自己的存储，正常
+                // 先看"这个容器归谁"，而不是"这块地板归谁"。
+                // 之前只比对格子房产权，结果物主把自己的东西放进自己的箱子，
+                // 只要箱子摆在公共房间或别人房间里，就会被当成"异常放置"弹出去。
+                Pawn groupOwner = OwnerOfGroup(g);
+                if (groupOwner == owner) continue;     // 自己的存放组（箱子/堆放区），正常，别管它
 
+                // 存放组没有归属（公共仓库）时，才退回按房间归属判断
+                if (groupOwner == null)
+                {
+                    Pawn cellOwner = EconomyRealEstate.OwnerAtCell(map, t.Position);
+                    if (cellOwner == owner) continue;
+                }
+
+                Pawn holder = groupOwner;
                 Log.Message("[HAUL] 异常放置：" + t.LabelShort + "（物主 " + owner.LabelShort
-                    + "）在" + (cellOwner == null ? "公共" : cellOwner.LabelShort) + "存储里，准备弹出");
+                    + "）在" + (holder == null ? "公共" : holder.LabelShort) + "存储里，准备弹出");
                 StorageEjectQueue.Enqueue(t);
             }
         }
