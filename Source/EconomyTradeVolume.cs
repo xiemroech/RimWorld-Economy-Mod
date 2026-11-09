@@ -25,10 +25,25 @@ namespace DshEconomy
 
         public static Dictionary<string, int> current = new Dictionary<string, int>();
         public static Dictionary<string, int> previous = new Dictionary<string, int>();
+        /// <summary>每日成交量的平滑均值（0.7 旧 + 0.3 新）。用来推算"这个殖民地每天用掉多少件"。</summary>
+        public static Dictionary<string, float> dailyAverage = new Dictionary<string, float>();
         public static int lastRollTick = -99999;
+
+        /// <summary>
+        /// 读档时 Scribe 可能把这两个字段置空（存档里没有对应节点、或类型对不上）。
+        /// 之后任何一次访问都会空引用，而且会被 UI 每帧调用 → 疯狂刷错。
+        /// 所有公开入口都先过一遍这里，宁可重置成空表也不要崩。
+        /// </summary>
+        public static void Ensure()
+        {
+            if (current == null) current = new Dictionary<string, int>();
+            if (previous == null) previous = new Dictionary<string, int>();
+            if (dailyAverage == null) dailyAverage = new Dictionary<string, float>();
+        }
 
         public static void Note(ThingDef def, int count)
         {
+            Ensure();
             if (def == null || count <= 0) return;
             string key = def.defName;
             if (key == null) return;
@@ -43,6 +58,7 @@ namespace DshEconomy
         /// </summary>
         public static float DemandFactor(ThingDef def)
         {
+            Ensure();
             if (def == null || def.defName == null) return 1f;
             int now, before;
             current.TryGetValue(def.defName, out now);
@@ -61,16 +77,27 @@ namespace DshEconomy
         /// <summary>到点了就把本期变成上期，本期清零。</summary>
         public static void Roll(int now)
         {
+            Ensure();
             if (now - lastRollTick < PeriodTicks) return;
             lastRollTick = now;
 
             previous.Clear();
             foreach (KeyValuePair<string, int> kv in current) previous[kv.Key] = kv.Value;
+
+            // 记一笔平滑日耗：0.7 旧均值 + 0.3 本期实际。参考库存靠它推算"够用多少天"。
+            foreach (KeyValuePair<string, int> kv in current)
+            {
+                float old;
+                dailyAverage.TryGetValue(kv.Key, out old);
+                dailyAverage[kv.Key] = old * 0.7f + kv.Value * 0.3f;
+            }
+
             current.Clear();
         }
 
         public static void Clear()
         {
+            Ensure();
             current.Clear();
             previous.Clear();
             lastRollTick = -99999;
@@ -79,6 +106,7 @@ namespace DshEconomy
         /// <summary>本期一共成交了多少件（所有物品合计）。用来粗估"钱转得快不快"。</summary>
         public static int TotalThisPeriod()
         {
+            Ensure();
             int total = 0;
             foreach (KeyValuePair<string, int> kv in current) total += kv.Value;
             return total;
@@ -86,15 +114,26 @@ namespace DshEconomy
 
         public static int CurrentOf(ThingDef def)
         {
+            Ensure();
             int v;
             if (def != null && def.defName != null && current.TryGetValue(def.defName, out v)) return v;
             return 0;
         }
 
+        /// <summary>这件东西平均每天成交多少件。没数据返回 0。</summary>
+        public static float DailyAverage(ThingDef def)
+        {
+            Ensure();
+            if (def == null || def.defName == null) return 0f;
+            float v;
+            if (dailyAverage.TryGetValue(def.defName, out v)) return v;
+            return 0f;
+        }
+
         public static int PreviousOf(ThingDef def)
         {
-            int v;
-            if (def != null && def.defName != null && previous.TryGetValue(def.defName, out v)) return v;
+            Ensure();
+            int v;            if (def != null && def.defName != null && previous.TryGetValue(def.defName, out v)) return v;
             return 0;
         }
     }

@@ -197,6 +197,18 @@ namespace DshEconomy
             return stockCounts.TryGetValue(def, out n) ? n : 0;
         }
 
+        /// <summary>把"当前仓库里真的有货"的物品塞进集合（供短缺巡检用）。</summary>
+        public void AppendStockedDefs(HashSet<ThingDef> into)
+        {
+            if (into == null) return;
+            RefreshStock();
+            if (stockCounts == null) return;
+            foreach (KeyValuePair<ThingDef, int> kv in stockCounts)
+            {
+                if (kv.Key != null && kv.Value > 0) into.Add(kv.Key);
+            }
+        }
+
         /// <summary>增量维护库存表（物品生成/销毁时调用）。</summary>
         public void AddStock(ThingDef def, int delta)
         {
@@ -437,6 +449,8 @@ namespace DshEconomy
                 }
                 // 成交量：满一期（1 天）就把本期翻成上期
                 EconomyTradeVolume.Roll(now);
+                // 结构性短缺：连续几天库存过低就汇总发一封信（内部有冷却）
+                EconomyShortageWatch.Tick(map);
             }
 
             // 劳动计量：每 250 tick 对一次账（换活才结算），不再 patch 全场热路径

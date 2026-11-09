@@ -62,6 +62,10 @@ namespace DshEconomy
         public float tradeSellMult = 0.5f;         // 超线后卖出每档打折
         public float tradeSellRatio = 0.5f;        // 收购线 = 商人白银 × 该比例
 
+        // 结构性短缺信的筛选（白名单语义：空的 = 全都要）
+        public bool shortageVanillaOnly;
+        public List<string> shortageOnlyCats = new List<string>();
+        public List<string> shortageOnlyDefs = new List<string>();
 
         public static float DefaultWorkMult(string defName)
         {
@@ -118,6 +122,11 @@ namespace DshEconomy
             if (medicalWhitelist == null) medicalWhitelist = new List<string>();
             Scribe_Collections.Look(ref restockPresets, "dsh_restockPresets", LookMode.Value);
             if (restockPresets == null) restockPresets = new List<string>();
+            Scribe_Values.Look(ref shortageVanillaOnly, "dsh_shortageVanillaOnly", false);
+            Scribe_Collections.Look(ref shortageOnlyCats, "dsh_shortageOnlyCats", LookMode.Value);
+            if (shortageOnlyCats == null) shortageOnlyCats = new List<string>();
+            Scribe_Collections.Look(ref shortageOnlyDefs, "dsh_shortageOnlyDefs", LookMode.Value);
+            if (shortageOnlyDefs == null) shortageOnlyDefs = new List<string>();
             // 旧版按"天"存，这里迁移成小时
             int legacyDays = 0;
             Scribe_Values.Look(ref legacyDays, "payEveryDays", 0);
@@ -398,6 +407,42 @@ namespace DshEconomy
             Widgets.Checkbox(new Vector2(view.x, y + 3f), ref Settings.incrementalStock, 24f);
             Widgets.Label(new Rect(view.x + 30f, y + 4f, 760f, 24f),
                 "高性能库存统计：物品生成/销毁时增量更新，全量重建降到每 2500 tick 一次（关掉则每 250 tick 全量扫描）");
+            y += 32f;
+
+            Widgets.Checkbox(new Vector2(view.x, y + 3f), ref Settings.shortageVanillaOnly, 24f);
+            Widgets.Label(new Rect(view.x + 30f, y + 4f, 760f, 24f),
+                "结构性短缺信只看原版物品（忽略其他 mod / 种族产物）");
+            y += 30f;
+
+            Widgets.Label(new Rect(view.x, y + 4f, 160f, 24f), "只提示勾选的分类：");
+            float bx = view.x + 156f;
+            float by = y;
+            List<EconomyCategoryDef> shortageCats = DefDatabase<EconomyCategoryDef>.AllDefsListForReading;
+            for (int ci = 0; ci < shortageCats.Count; ci++)
+            {
+                EconomyCategoryDef cat = shortageCats[ci];
+                if (cat == null) continue;
+                bool picked = Settings.shortageOnlyCats.Contains(cat.defName);
+                string catLabel = string.IsNullOrEmpty(cat.label) ? cat.defName : cat.label;
+                if (Widgets.ButtonText(new Rect(bx, by, 96f, 24f), picked ? "✓ " + catLabel : catLabel))
+                {
+                    if (picked) Settings.shortageOnlyCats.Remove(cat.defName);
+                    else Settings.shortageOnlyCats.Add(cat.defName);
+                }
+                bx += 102f;
+                if (bx + 96f > inRect.xMax - 20f)
+                {
+                    bx = view.x + 156f;
+                    by += 28f;
+                }
+            }
+            y = by + 30f;
+            if (Widgets.ButtonText(new Rect(view.x, y, 140f, 26f), "立即发一次预警"))
+            {
+                EconomyShortageWatch.ForceSend(map);
+            }
+            Widgets.Label(new Rect(view.x + 148f, y + 4f, 700f, 24f),
+                "不等 4 天、不受 3 天冷却限制，按当前库存直接发一封，用来检查筛选效果。");
             y += 32f;
 
             Widgets.Checkbox(new Vector2(view.x, y + 3f), ref Settings.debugMode, 24f);

@@ -335,7 +335,7 @@ namespace DshEconomy
             {
                 case 1: return comp != null ? comp.StockOf(def) : 0f;
                 case 2:
-                    float refStock = EconomyPrice.ReferenceStock(def);
+                    float refStock = EconomyPrice.ReferenceStock(def, map);
                     return refStock < 0f ? 0f : refStock;   // 算不出来的排在最后（升序时值为 0）
                 case 3: return EconomyValue.MaterialCost(def, map);
                 case 4: return EconomyValue.LaborValue(def, map);
@@ -494,7 +494,7 @@ namespace DshEconomy
 
                 float cost = EconomyValue.MaterialCost(def, map);
                 float labor = EconomyValue.LaborValue(def, map);
-                float reference = EconomyPrice.ReferenceStock(def);
+                float reference = EconomyPrice.ReferenceStock(def, map);
                 int stock = comp != null ? comp.StockOf(def) : 0;
                 float scarcity = EconomyPrice.ScarcityFactor(def, map);
 

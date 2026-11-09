@@ -85,17 +85,47 @@ namespace DshEconomy
         // 供求偏离的最大幅度：价格只在价值上下 15% 内摆动（马克思：价格围绕价值波动）
         public const float ScarcityRange = 0.15f;
 
+        /// <summary>食物库存按"够吃多少天"算。</summary>
+        public const float FoodTurnoverDays = 15f;
+
         /// <summary>
-        /// 参考库存：约 2000 银的货折成多少件。
-        /// 返回 -1 = 原版没给这件东西标价，算不出来（面板显示"—"，稀缺度不参与）。
-        /// 上限按堆叠上限的 2 倍封顶，避免 0.1 银的东西算出 20000 件那种假数字。
+        /// 参考库存 = "这个量算供需平衡"。
+        /// 三类物品的"需要"本来就不是一回事：
+        ///   · 食物/药是消耗品 → 按实际日耗 × 半个月（再生产周期内的储备）
+        ///   · 衣物/武器是耐用品 → 按人口配给
+        ///   · 其它是生产资料 → 按价值量周转（2000 银的货）
+        /// 不写死任何 defName，任何 mod 物品都会自动落进某一类。
+        /// 返回 -1 = 原版没标价，算不出来。
         /// </summary>
-        public static float ReferenceStock(ThingDef def)
+        public static float ReferenceStock(ThingDef def, Map map)
         {
             if (def == null) return -1f;
             float vanilla = EconomyValue.VanillaPrice(def);
             if (vanilla <= 0.01f) return -1f;
-            return Mathf.Min(2000f / vanilla, Mathf.Max(2f, def.stackLimit * 2f));
+
+            float cap = Mathf.Max(2f, def.stackLimit * 2f);
+            int pop = 4;
+            if (map != null && map.mapPawns != null)
+                pop = Mathf.Max(1, map.mapPawns.FreeColonistsCount);
+
+            if (def.IsIngestible)
+            {
+                float daily = EconomyTradeVolume.DailyAverage(def);
+                if (daily >= 1f) return Mathf.Clamp(daily * FoodTurnoverDays, 2f, cap);
+                // 还没交易数据：按人数估——每人每天约 2 份（含浪费）
+                return Mathf.Clamp(pop * 2f * FoodTurnoverDays, 2f, cap);
+            }
+
+            if (def.IsApparel) return Mathf.Clamp(pop * 3f, 2f, cap);   // 一人三套换洗
+            if (def.IsWeapon) return Mathf.Clamp(pop * 1.5f, 2f, cap);  // 一人一把半
+
+            // 其它：按财富口径，不跟成交量（枪一年卖不出三把，按日耗算会失真）
+            return Mathf.Min(2000f / vanilla, cap);
+        }
+
+        public static float ReferenceStock(ThingDef def)
+        {
+            return ReferenceStock(def, null);
         }
 
         /// <summary>稀缺弹性指数 k：越大，缺货时涨得越猛。</summary>
@@ -117,7 +147,7 @@ namespace DshEconomy
             float value = Mathf.Max(0.1f, EconomyValue.Of(def, map));
             // 参考库存 = 2000 银 ÷ 原版市价。
             // 用原版市价而不是我们算出来的价值：估值一旦偏离，参考库存会跟着偏，稀缺度又被放大一遍。
-            float reference = ReferenceStock(def);
+            float reference = ReferenceStock(def, map);
             // 原版没标价：不参与稀缺波动，免得 0.1 的兜底价算出"参考 20000 件"这种假数字。
             if (reference < 0f) return 1f;
             int stock = comp.StockOf(def);

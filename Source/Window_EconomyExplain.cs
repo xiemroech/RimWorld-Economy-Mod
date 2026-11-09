@@ -47,8 +47,13 @@ namespace DshEconomy
             {
                 EconomyValue.DumpFoodBranch();
             }
+            int pickedCount = DshEconomyMod.Settings != null && DshEconomyMod.Settings.shortageOnlyDefs != null
+                ? DshEconomyMod.Settings.shortageOnlyDefs.Count : 0;
             Widgets.Label(new Rect(496f, 30f, inRect.width - 496f, 22f),
-                map == null ? "需要进入地图" : "共 " + rows.Count + " 条");
+                map == null ? "需要进入地图"
+                : "共 " + rows.Count + " 条" + (pickedCount > 0
+                    ? "（预警只提示勾选的 " + pickedCount + " 件）"
+                    : "（左侧勾选 = 加入预警，不勾则全部提示）"));
 
             if (map == null) return;
             if (filter != lastFilter)
@@ -71,7 +76,25 @@ namespace DshEconomy
                 float y = 4f + i * rowH;
                 Rect r = new Rect(4f, y, view.width - 8f, rowH - 4f);
                 if (i % 2 == 0) Widgets.DrawBoxSolid(r, new Color(1f, 1f, 1f, 0.04f));
-                Widgets.Label(new Rect(r.x + 6f, r.y + 2f, r.width - 12f, rowH - 8f), lines[i]);
+
+                ThingDef rowDef = rows[i];
+                if (rowDef != null)
+                {
+                    DshEconomySettings st = DshEconomyMod.Settings;
+                    if (st != null && st.shortageOnlyDefs != null)
+                    {
+                        bool picked = st.shortageOnlyDefs.Contains(rowDef.defName);
+                        bool nowPicked = picked;
+                        Widgets.Checkbox(new Vector2(r.x + 6f, r.y + 6f), ref nowPicked, 24f);
+                        if (nowPicked != picked)
+                        {
+                            if (nowPicked) st.shortageOnlyDefs.Add(rowDef.defName);
+                            else st.shortageOnlyDefs.Remove(rowDef.defName);
+                        }
+                    }
+                }
+
+                Widgets.Label(new Rect(r.x + 34f, r.y + 2f, r.width - 40f, rowH - 8f), lines[i]);
             }
             Widgets.EndScrollView();
         }
