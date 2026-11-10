@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -44,7 +44,7 @@ namespace DshEconomy
 
                 if (due > 0)
                 {
-                    Log.Message("[DSH-ECONOMY] 所得税：" + p.LabelShort + " 收入 " + income.ToString("0.#")
+                    DevLog.Msg("[DSH-ECONOMY] 所得税：" + p.LabelShort + " 收入 " + income.ToString("0.#")
                         + " 税率 " + (rate * 100f).ToString("0") + "% 应缴 " + due);
                 }
             }
@@ -66,7 +66,7 @@ namespace DshEconomy
 
             if (total > 0)
             {
-                Log.Message("[DSH-ECONOMY] 本期税收合计 " + total + " 银，国库现有 " + EconomyBank.ColonySilver(map));
+                DevLog.Msg("[DSH-ECONOMY] 本期税收合计 " + total + " 银，国库现有 " + EconomyBank.ColonySilver(map));
             }
             return total;
         }
@@ -80,3 +80,4 @@ namespace DshEconomy
         }
     }
 }
+

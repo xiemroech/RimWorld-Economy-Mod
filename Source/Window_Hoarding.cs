@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -28,6 +28,9 @@ namespace DshEconomy
             get { return new Vector2(760f, 560f); }
         }
 
+        private int builtTick = -99999;
+        private readonly List<string[]> lines = new List<string[]>();
+
         public override void DoWindowContents(Rect inRect)
         {
             Map map = Find.CurrentMap;
@@ -49,6 +52,42 @@ namespace DshEconomy
             Widgets.Label(new Rect(390f, 54f, 100f, 22f), "私产估值");
             Widgets.Label(new Rect(495f, 54f, 150f, 22f), "私有仓库空余");
 
+            // 与商品表一样：一次算好，之后只画可视区，不再每帧重算估值。
+            int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+            if (now - builtTick > 250 || lines.Count == 0)
+            {
+                Rebuild(map);
+                builtTick = now;
+            }
+
+            const float rowH = 26f;
+            Rect outRect = new Rect(0f, 78f, inRect.width, inRect.height - 86f);
+            Rect viewRect = new Rect(0f, 0f, outRect.width - 18f, lines.Count * rowH + 8f);
+            Widgets.BeginScrollView(outRect, ref scroll, viewRect);
+
+            int first = Mathf.Max(0, Mathf.FloorToInt(scroll.y / rowH) - 1);
+            int last = Mathf.Min(lines.Count - 1, Mathf.CeilToInt((scroll.y + outRect.height) / rowH) + 1);
+
+            for (int i = first; i <= last; i++)
+            {
+                string[] r = lines[i];
+                float y = 2f + i * rowH;
+                Rect row = new Rect(4f, y, viewRect.width - 8f, 24f);
+                if (i % 2 == 0) Widgets.DrawBoxSolid(row, new Color(1f, 1f, 1f, 0.03f));
+                Widgets.Label(new Rect(8f, y + 2f, 156f, 22f), r[0]);
+                Widgets.Label(new Rect(170f, y + 2f, 80f, 22f), r[1]);
+                Widgets.Label(new Rect(252f, y + 2f, 50f, 22f), r[2]);
+                Widgets.Label(new Rect(305f, y + 2f, 80f, 22f), r[3]);
+                Widgets.Label(new Rect(390f, y + 2f, 100f, 22f), r[4]);
+                Widgets.Label(new Rect(495f, y + 2f, 150f, 22f), r[5]);
+            }
+            Widgets.EndScrollView();
+        }
+
+        private void Rebuild(Map map)
+        {
+            lines.Clear();
+
             Dictionary<Pawn, List<Thing>> index = EconomyPrivate.BuildIndex(map);
             List<Pawn> colonists = map.mapPawns.FreeColonists;
             var rows = new List<KeyValuePair<Pawn, float>>();
@@ -67,33 +106,27 @@ namespace DshEconomy
             }
             rows.Sort((a, b) => b.Value.CompareTo(a.Value));
 
-            Rect outRect = new Rect(0f, 78f, inRect.width, inRect.height - 86f);
-            Rect viewRect = new Rect(0f, 0f, outRect.width - 18f, rows.Count * 26f + 8f);
-            Widgets.BeginScrollView(outRect, ref scroll, viewRect);
-
-            float y = 2f;
             for (int i = 0; i < rows.Count; i++)
             {
                 Pawn p = rows[i].Key;
-                List<Thing> list = index[p];
+                List<Thing> list;
+                index.TryGetValue(p, out list);
                 if (list == null) list = new List<Thing>();
-
-                Rect row = new Rect(4f, y, viewRect.width - 8f, 24f);
-                if (i % 2 == 0) Widgets.DrawBoxSolid(row, new Color(1f, 1f, 1f, 0.03f));
-                Widgets.Label(new Rect(8f, y + 2f, 156f, 22f), p.LabelShort);
-                Widgets.Label(new Rect(170f, y + 2f, 80f, 22f), Describe(list));
-                Widgets.Label(new Rect(252f, y + 2f, 50f, 22f), list.Count.ToString("0"));
-                Widgets.Label(new Rect(305f, y + 2f, 80f, 22f),
-                    EconomyBank.PrivateSilver(map, p).ToString("N0"));
-                Widgets.Label(new Rect(390f, y + 2f, 100f, 22f), rows[i].Value.ToString("0.#"));
 
                 int cells, used;
                 float free = EconomyPrivateStorageBehavior.FreeRatio(p, map, out used, out cells);
                 string freeText = free < 0f ? "无仓库" : (free * 100f).ToString("0") + "%（" + used + "/" + cells + "）";
-                Widgets.Label(new Rect(495f, y + 2f, 150f, 22f), freeText);
-                y += 26f;
+
+                lines.Add(new[]
+                {
+                    p.LabelShort,
+                    Describe(list),
+                    list.Count.ToString("0"),
+                    EconomyBank.PrivateSilver(map, p).ToString("N0"),
+                    rows[i].Value.ToString("0.#"),
+                    freeText,
+                });
             }
-            Widgets.EndScrollView();
         }
 
         private static string Describe(List<Thing> list)

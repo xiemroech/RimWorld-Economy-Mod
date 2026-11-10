@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -55,7 +55,7 @@ namespace DshEconomy
                 def.comps.Add(new CompProperties_Breakdownable());
                 n++;
             }
-            Log.Message("[DSH-ECONOMY] 折旧：为 " + n + " 种生产建筑补上损坏组件");
+            DevLog.Msg("[DSH-ECONOMY] 折旧：为 " + n + " 种生产建筑补上损坏组件");
         }
 
         /// <summary>清掉旧存档里被错误挂到非建筑（动物、皮毛等）上的损坏组件。</summary>
@@ -74,7 +74,7 @@ namespace DshEconomy
                     n += Strip(pw);
                 }
             }
-            if (n > 0) Log.Message("[DSH-ECONOMY] 折旧清理：移除 " + n + " 个非建筑身上的损坏组件");
+            if (n > 0) DevLog.Msg("[DSH-ECONOMY] 折旧清理：移除 " + n + " 个非建筑身上的损坏组件");
         }
 
         private static int Strip(ThingWithComps twc)
@@ -102,7 +102,7 @@ namespace DshEconomy
                 if (Rand.MTBEventOccurs(mtbDays * GenDate.TicksPerDay, 1f, Interval))
                 {
                     c.DoBreakdown();
-                    Log.Message("[DEPRECIATION] 故障：" + b.LabelShort + "（" + b.def.defName + "），待维修");
+                    DevLog.Msg("[DEPRECIATION] 故障：" + b.LabelShort + "（" + b.def.defName + "），待维修");
                 }
             }
         }
@@ -259,7 +259,7 @@ namespace DshEconomy
             }
 
             c.Notify_Repaired();
-            Log.Message("[DEPRECIATION] 修好 " + t.LabelShort + "（" + t.def.defName + "，材质=" + (t.Stuff?.defName ?? "无")
+            DevLog.Msg("[DEPRECIATION] 修好 " + t.LabelShort + "（" + t.def.defName + "，材质=" + (t.Stuff?.defName ?? "无")
                 + "）消耗：" + CostLabel(t) + "；原配方=" + DumpCostList(t.def));
 
             if (t.def.repairEffect != null)
@@ -282,7 +282,7 @@ namespace DshEconomy
                 c.DoBreakdown();
                 n++;
             }
-            Log.Message("[DEPRECIATION] 沙盒：已让 " + n + " 个生产建筑故障");
+            DevLog.Msg("[DEPRECIATION] 沙盒：已让 " + n + " 个生产建筑故障");
             return n;
         }
 
@@ -297,7 +297,7 @@ namespace DshEconomy
                 c.Notify_Repaired();
                 n++;
             }
-            Log.Message("[DEPRECIATION] 沙盒：已修好 " + n + " 个生产建筑");
+            DevLog.Msg("[DEPRECIATION] 沙盒：已修好 " + n + " 个生产建筑");
             return n;
         }
 
@@ -311,7 +311,7 @@ namespace DshEconomy
                 if (IsBroken(b)) broken++;
             }
             MapEconomyComponent comp = map.GetComponent<MapEconomyComponent>();
-            Log.Message("[DEPRECIATION] 生产建筑=" + total + " 故障中=" + broken
+            DevLog.Msg("[DEPRECIATION] 生产建筑=" + total + " 故障中=" + broken
                 + " 平均无故障天数=" + (comp?.depreciationMtbDays ?? 0f));
         }
     }
@@ -358,7 +358,7 @@ namespace DshEconomy
                     HarmonyLib.AccessTools.Method(typeof(DepreciationGizmoPatch), nameof(FixBrokenJobPrefix))));
             }
 
-            Log.Message("[DSH-ECONOMY] 折旧：故障禁产：" + (dobill != null ? "已挂载" : "未找到 WorkGiver_DoBill")
+            DevLog.Msg("[DSH-ECONOMY] 折旧：故障禁产：" + (dobill != null ? "已挂载" : "未找到 WorkGiver_DoBill")
                 + "，原版免费维修屏蔽：" + (repairable != null ? "已挂载" : "未找到 RepairableBuildings")
                 + "，零部件修故障让位：" + (fixHas != null ? "已挂载" : "未找到 WorkGiver_FixBrokenDownBuilding"));
         }
@@ -410,3 +410,4 @@ namespace DshEconomy
         }
     }
 }
+

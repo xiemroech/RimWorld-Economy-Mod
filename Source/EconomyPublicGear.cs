@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using Verse;
 using Verse.AI;
@@ -51,7 +51,7 @@ namespace DshEconomy
             if (!p.equipment.TryDropEquipment(weapon, out dropped, p.PositionHeld, false)) return;
             if (dropped == null) return;
 
-            Log.Message("[GEAR] " + p.LabelShort + " 放下公共武器（" + dropped.LabelShort + "），准备收回仓库");
+            DevLog.Msg("[GEAR] " + p.LabelShort + " 放下公共武器（" + dropped.LabelShort + "），准备收回仓库");
             SendToStorage(p, dropped, map);
         }
 
@@ -67,7 +67,7 @@ namespace DshEconomy
                 // 同上：不做"是否闲着"的限制
                 if (!p.apparel.TryDrop(ap, out Apparel dropped, p.PositionHeld, false)) continue;
                 if (dropped == null) continue;
-                Log.Message("[GEAR] " + p.LabelShort + " 脱下公共衣物（" + dropped.LabelShort + "），准备收回仓库");
+                DevLog.Msg("[GEAR] " + p.LabelShort + " 脱下公共衣物（" + dropped.LabelShort + "），准备收回仓库");
                 SendToStorage(p, dropped, map);
             }
         }
@@ -103,7 +103,8 @@ namespace DshEconomy
                 }
             }
 
-            Log.Message("[GEAR] 没有可放位置，留在脚下：" + item.LabelShort);
+            DevLog.Msg("[GEAR] 没有可放位置，留在脚下：" + item.LabelShort);
         }
     }
 }
+

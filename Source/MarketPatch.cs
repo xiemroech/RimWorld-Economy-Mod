@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using HarmonyLib;
@@ -33,6 +34,64 @@ namespace DshEconomy
             }
             // 只搬不捡：禁止把地上的公共物品捡进背包（有订单的购买/救济例外）。
             HookJobGiverProbe(harmony);
+            // 合并探测：只观察、不拦截，用来找"标签丢失"的真入口。
+            // 用枚举而不是精确签名——1.7 里 TryAbsorbStack 的参数表不一定只有一种。
+            try
+            {
+                MethodInfo[] absorbs = typeof(Thing).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                int hookedMerge = 0;
+                string mergeError = null;
+                for (int mi = 0; mi < absorbs.Length; mi++)
+                {
+                    MethodInfo m = absorbs[mi];
+                    if (m == null || m.Name != "TryAbsorbStack") continue;
+                    ParameterInfo[] ps = m.GetParameters();
+                    if (ps.Length != 2) continue;
+                    if (ps[0].ParameterType != typeof(Thing) || ps[1].ParameterType != typeof(bool)) continue;
+                    try
+                    {
+                        harmony.Patch(m, postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(MergeProbePostfix), BindingFlags.Static | BindingFlags.NonPublic)));
+                        hookedMerge++;
+                    }
+                    catch (System.Exception ex)
+                    {
+                        mergeError = m.Name + " 挂载失败：" + ex.GetType().Name + " " + ex.Message;
+                    }
+                }
+                DevLog.Msg("[DSH-ECONOMY] 合并探测：已挂 " + hookedMerge + " 个 TryAbsorbStack 重载"
+                    + (string.IsNullOrEmpty(mergeError) ? "" : "｜失败原因：" + mergeError));
+                if (hookedMerge == 0)
+                {
+                    System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                    for (int mi = 0; mi < absorbs.Length; mi++)
+                    {
+                        MethodInfo m = absorbs[mi];
+                        if (m == null) continue;
+                        string nm = m.Name;
+                        if (nm.IndexOf("Absorb", System.StringComparison.OrdinalIgnoreCase) < 0
+                            && nm.IndexOf("Merge", System.StringComparison.OrdinalIgnoreCase) < 0
+                            && nm.IndexOf("Stack", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        sb.Append(nm).Append('(');
+                        ParameterInfo[] cps = m.GetParameters();
+                        for (int k = 0; k < cps.Length; k++)
+                        {
+                            if (k > 0) sb.Append(", ");
+                            sb.Append(cps[k].ParameterType.Name);
+                        }
+                        sb.Append(") ");
+                    }
+                    DevLog.Msg("[DSH-ECONOMY] 并堆候选方法：" + sb.ToString());
+                }
+            }
+            catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 合并探测挂载失败：" + e.Message); }
+
+            HookDespawnProbe(harmony);
+            HookFoodTrace(harmony);
+            // 已回滚：之前想接管存储界面的价格列，原版那一列是打开页签时就缓存好的，
+            // 挂了几层都改不到，最后改成"在仓库里就换价"又会影响财富。
+            // 现在一律不碰原版价格：价格只在物品信息（右下角）里显示。
+            HookHideMarketItems(harmony);
+            HookPriceBoard(harmony);
             MethodInfo target = AccessTools.Method(typeof(ThingOwner<Thing>), "TryAdd", new[] { typeof(Thing), typeof(bool) });
             if (target == null)
             {
@@ -62,7 +121,7 @@ namespace DshEconomy
                     Log.Warning("[DSH-ECONOMY] 任务结束探针挂载失败：" + e.Message);
                 }
             }
-            Log.Message("[DSH-ECONOMY] 任务结束探针：已挂 " + hooked + " 个 EndCurrentJob 重载");
+            DevLog.Msg("[DSH-ECONOMY] 任务结束探针：已挂 " + hooked + " 个 EndCurrentJob 重载");
 
             HookProduction(harmony);
 
@@ -156,7 +215,7 @@ namespace DshEconomy
             // 没有任何可挂的 Gather() 方法（实测 7 个类型全是 getter）。
             // 改为在 EndJobPostfix 里按"采集任务成功"记账，这里不再挂钩子。
 
-            Log.Message("[DSH-ECONOMY] 产地统计：合成 " + recipe + " / 挖掘 " + mine
+            DevLog.Msg("[DSH-ECONOMY] 产地统计：合成 " + recipe + " / 挖掘 " + mine
                 + " / 收割 " + harvest + " / 屠宰 " + butcher + " 个采集点（动物产出按任务结算记账）");
         }
 
@@ -304,17 +363,65 @@ namespace DshEconomy
         }
 
         /// <summary>
-        /// 买的/领的东西不许并进已有的堆：
-        /// 合并会销毁新来的那份，标签就没地方打了。
+        /// 【已停用】买的/领的东西不许并堆。
+        /// 实测这个拦法会让"背包里放不进第二份食物"（小人拿了就掉、留不住口粮），
+        /// 而真正丢标签的并堆又不在这个入口上，所以整体放行，回到原版行为。
         /// </summary>
-        private static void TryAddPrefix(ThingOwner<Thing> __instance, ref bool canMergeWithExistingStacks)
+        private static void TryAddPrefix(ThingOwner<Thing> __instance, Thing item, ref bool canMergeWithExistingStacks)
         {
-            if (!canMergeWithExistingStacks) return;
-            Pawn_InventoryTracker inv = __instance.Owner as Pawn_InventoryTracker;
-            if (inv == null || inv.pawn == null) return;
-            if (!EconomyMarket.HasPending(inv.pawn)) return;
+            try
+            {
+                if (__instance == null || item == null) return;
 
-            canMergeWithExistingStacks = false;
+                // 背包与手上：一律不许并，并了就会把两个主人的标签并成一个
+                if (__instance.Owner is Pawn_InventoryTracker || __instance.Owner is Pawn_CarryTracker)
+                {
+                    canMergeWithExistingStacks = false;
+                    return;
+                }
+
+                Pawn itemOwner = EconomyPrivate.OwnerOf(item);
+                string itemKey = EconomyValue.IngredientKey(item);
+
+                for (int i = 0; i < __instance.Count; i++)
+                {
+                    Thing t = __instance[i];
+                    if (t == null || t.Destroyed || t.def != item.def) continue;
+
+                    string tKey = EconomyValue.IngredientKey(t);
+                    bool bothUnknown = string.IsNullOrEmpty(tKey) && string.IsNullOrEmpty(itemKey);
+                    bool sameKey = bothUnknown
+                        || (!string.IsNullOrEmpty(tKey) && !string.IsNullOrEmpty(itemKey)
+                            && string.Equals(tKey, itemKey, System.StringComparison.Ordinal));
+                    bool sameOwner = EconomyPrivate.OwnerOf(t) == itemOwner;
+
+                    if (sameKey && sameOwner) continue;
+
+                    canMergeWithExistingStacks = false;
+                    string why = !sameOwner ? "归属不同"
+                        : (bothUnknown ? "其他" : (string.IsNullOrEmpty(tKey) || string.IsNullOrEmpty(itemKey) ? "用料未知" : "配方不同"));
+                    MergeLog(item, t, why);
+                    return;
+                }
+            }
+            catch { }
+        }
+
+        private static int lastMergeLog = -99999;
+
+        /// <summary>记录一次被拒绝的并堆（30 tick 节流，避免刷屏）。</summary>
+        private static void MergeLog(Thing a, Thing b, string why)
+        {
+            try
+            {
+                int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+                if (now - lastMergeLog < 30) return;
+                lastMergeLog = now;
+                DevLog.Msg("[MERGE] 拒绝合并：" + (a != null ? a.LabelShort : "?") + " ×" + (a != null ? a.stackCount : 0)
+                    + " + " + (b != null ? b.LabelShort : "空") + " ×" + (b != null ? b.stackCount : 0)
+                    + " 原因=" + why);
+            }
+            catch { }
         }
 
         private static void TryAddPostfix(ThingOwner<Thing> __instance, Thing item, bool canMergeWithExistingStacks, bool __result)
@@ -381,41 +488,303 @@ namespace DshEconomy
         }
 
         /// <summary>
-        /// 原料不同的食物不许合并：价格是按原料算的，混堆会让两种价格变成一种。
-        /// 原版只看 def 相同就合并，正好和我们的定价依据冲突。
+        /// 能不能叠在一起：**无法证明是"同一种东西"就不合并**。
+        /// 判据三条，缺一不可：同一个 def、同一个主人、同样的原料表。
+        /// 之前按"配方键"拦，拦不住"两种简单食物"（配方不同但同 def 的饭），
+        /// 这次直接比原料表本身。
         /// </summary>
-        private static void NoMergeDifferentIngredients(Thing __instance, Thing other, ref bool __result)
+        private static bool SameStackIdentity(Thing a, Thing b)
+        {
+            if (a == null || b == null) return false;
+            if (a.def != b.def) return false;
+            if (!ReferenceEquals(EconomyPrivate.OwnerOf(a), EconomyPrivate.OwnerOf(b))) return false;
+            CompIngredients ca = a.TryGetComp<CompIngredients>();
+            CompIngredients cb = b.TryGetComp<CompIngredients>();
+            if (ca == null && cb == null) return true;
+            if (ca == null || cb == null) return false;
+            List<ThingDef> la = ca.ingredients;
+            List<ThingDef> lb = cb.ingredients;
+            if (la == null || lb == null) return la == lb;
+            if (la.Count != lb.Count) return false;
+            // 顺序不敏感：逐个配对，配上了就划掉
+            bool[] used = new bool[lb.Count];
+            for (int i = 0; i < la.Count; i++)
+            {
+                bool hit = false;
+                for (int j = 0; j < lb.Count; j++)
+                {
+                    if (used[j] || lb[j] != la[i]) continue;
+                    used[j] = true; hit = true; break;
+                }
+                if (!hit) return false;
+            }
+            return true;
+        }
+
+        private static bool NoMergeDifferentIngredients(Thing __instance, Thing other, ref bool __result)
         {
             try
             {
-                string a = EconomyValue.IngredientKey(__instance);
-                if (a == null) return;                       // 没原料记录（不是食物）→ 交给原版
-                string b = EconomyValue.IngredientKey(other);
-                if (!string.Equals(a, b, System.StringComparison.Ordinal))
-                    __result = false;                        // 用 false 覆盖原版结果
+                if (__instance == null || other == null) return true;
+                if (SameStackIdentity(__instance, other)) return true;
+                __result = false;
+                MergeProbeLog(__instance, other, "拒绝叠加：身份不同");
+                return false;
             }
-            catch { }
+            catch { return true; }
         }
+
         
         /// <summary>
-        /// 真正的合并动作。CanStackWith 只是"能不能"，地面物品并堆经常绕过它直接吞噬，
-        /// 所以这里也要拦一次：prefix 返回 false = 不执行原方法 = 不合并。
+        /// 【已停用】拦截合并。
+        /// 实测原版并堆绕过了这里的两个入口（CanStackWith / TryAbsorbStack），
+        /// 拦不到目标，反而让"背包里放不进第二堆"等行为异常，故整体放行，交给原版。
         /// </summary>
         private static bool NoAbsorbDifferentIngredients(Thing __instance, Thing other, ref bool __result)
         {
             try
             {
-                string a = EconomyValue.IngredientKey(__instance);
-                if (a == null) return true;                  // 没原料记录（不是食物）→ 交给原版
-                string b = EconomyValue.IngredientKey(other);
-                if (!string.Equals(a, b, System.StringComparison.Ordinal))
-                {
-                    __result = false;
-                    return false;
-                }
+                if (__instance == null || other == null) return true;
+                if (SameStackIdentity(__instance, other)) return true;
+                __result = false;
+                MergeProbeLog(__instance, other, "拒绝合并：身份不同");
+                return false;
+            }
+            catch { return true; }
+        }
+
+        private static void MergeProbeLog(Thing a, Thing b, string why)
+        {
+            try
+            {
+                if (Find.TickManager == null) return;
+                DevLog.Msg("[MERGE] " + why + "：" + (a.def != null ? a.def.defName : "?") + " + " + (b.def != null ? b.def.defName : "?"));
             }
             catch { }
-            return true;
+        }
+
+        // ---------------- 存储界面按实际价格显示 ----------------
+
+        /// <summary>
+        /// 存储界面（内容列表）那一列价钱用的是原版 MarketValue，和我们的现价对不上。
+        /// 只在"正在画这一行"的时候，把 MarketValue 换成我们的现价，其他地方一律不动。
+        /// </summary>
+        private static void HookStoragePriceRows(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                int rows = 0;
+                MethodInfo[] ms = typeof(ITab_ContentsBase).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                for (int i = 0; i < ms.Length; i++)
+                {
+                    MethodInfo m = ms[i];
+                    if (m == null || m.Name != "DrawThingRow") continue;
+                    try
+                    {
+                        harmony.Patch(m,
+                            prefix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(StorageRowStart), BindingFlags.Static | BindingFlags.NonPublic)),
+                            postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(StorageRowEnd), BindingFlags.Static | BindingFlags.NonPublic)));
+                        rows++;
+                    }
+                    catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 存储行价格：挂绘制失败 " + e.Message); }
+                }
+                MethodInfo mv = AccessTools.PropertyGetter(typeof(Thing), "MarketValue");
+                if (mv != null)
+                {
+                    harmony.Patch(mv, prefix: new HarmonyMethod(
+                        typeof(MarketPatch).GetMethod(nameof(StorageRowMarketValue), BindingFlags.Static | BindingFlags.NonPublic)));
+                }
+                // 有些列表用的是 def 级基础价，这一条一起接管。
+                MethodInfo bmv = AccessTools.PropertyGetter(typeof(ThingDef), "BaseMarketValue");
+                if (bmv != null)
+                {
+                    harmony.Patch(bmv, prefix: new HarmonyMethod(
+                        typeof(MarketPatch).GetMethod(nameof(StorageRowBaseMarketValue), BindingFlags.Static | BindingFlags.NonPublic)));
+                }
+                int pane = 0;
+                MethodInfo[] pms = typeof(MainTabWindow_Inspect).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                for (int i = 0; i < pms.Length; i++)
+                {
+                    MethodInfo m = pms[i];
+                    if (m == null || m.Name != "DoWindowContents") continue;
+                    try
+                    {
+                        harmony.Patch(m,
+                            prefix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(StorageRowStart), BindingFlags.Static | BindingFlags.NonPublic)),
+                            postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(StorageRowEnd), BindingFlags.Static | BindingFlags.NonPublic)));
+                        pane++;
+                    }
+                    catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 存储行价格：挂检视面板失败 " + e.Message); }
+                }
+                // 存储页签自己的绘制入口，比"检视面板"更贴近 —— 列表就是在 FillTab 里画出来的。
+                int tabs = 0;
+                MethodInfo[] tms = typeof(ITab_Storage).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                for (int i = 0; i < tms.Length; i++)
+                {
+                    MethodInfo m = tms[i];
+                    if (m == null || m.Name != "FillTab") continue;
+                    try
+                    {
+                        harmony.Patch(m,
+                            prefix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(StorageRowStart), BindingFlags.Static | BindingFlags.NonPublic)),
+                            postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(StorageRowEnd), BindingFlags.Static | BindingFlags.NonPublic)));
+                        tabs++;
+                    }
+                    catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 存储行价格：挂页签失败 " + e.Message); }
+                }
+                // 真正的主角：原版列表读的是"物品的市场价值属性"（GetStatValue）。
+                // 它是 StatExtension 里的**静态扩展方法**，不在 Thing 自己身上，所以上面那轮找到 0 个。
+                int statHooks = 0;
+                string statNames = "";
+                Type se = AccessTools.TypeByName("StatExtension") ?? AccessTools.TypeByName("RimWorld.StatExtension");
+                if (se != null)
+                {
+                    MethodInfo[] sms = se.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                    for (int i = 0; i < sms.Length; i++)
+                    {
+                        MethodInfo m = sms[i];
+                        if (m == null || m.Name != "GetStatValue") continue;
+                        ParameterInfo[] ps = m.GetParameters();
+                        statNames += " " + m.Name + "(" + (ps.Length > 0 ? ps[0].ParameterType.Name : "") + "," + (ps.Length > 1 ? ps[1].ParameterType.Name : "") + ")";
+                        if (ps.Length < 2 || ps[0].ParameterType != typeof(Thing) || ps[1].ParameterType != typeof(StatDef)) continue;
+                        try
+                        {
+                            harmony.Patch(m, prefix: new HarmonyMethod(
+                                typeof(MarketPatch).GetMethod(nameof(StorageRowStatValue), BindingFlags.Static | BindingFlags.NonPublic)));
+                            statHooks++;
+                        }
+                        catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 存储行价格：挂属性取值失败 " + e.Message); }
+                    }
+                }
+                DevLog.Msg("[DSH-ECONOMY] 属性取值候选：" + (statNames.Length > 0 ? statNames : " 没找到 StatExtension"));
+                // 有些列表在"打开页签"那一下就把数字算好存起来了，画的时候只是照着存好的值填。
+                // 所以开页签、内容变化也各挂一次，让开关在这期间保持打开。
+                int opens = 0;
+                MethodInfo[] oms = typeof(ITab_Storage).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                for (int i = 0; i < oms.Length; i++)
+                {
+                    MethodInfo m = oms[i];
+                    if (m == null) continue;
+                    if (m.Name != "OnOpen" && m.Name != "NotifyContentsChanged") continue;
+                    try
+                    {
+                        harmony.Patch(m,
+                            prefix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(StorageRowStart), BindingFlags.Static | BindingFlags.NonPublic)),
+                            postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(StorageRowEnd), BindingFlags.Static | BindingFlags.NonPublic)));
+                        opens++;
+                    }
+                    catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 存储行价格：挂开页签失败 " + e.Message); }
+                }
+                DevLog.Msg("[DSH-ECONOMY] 存储界面按现价显示：已挂 " + rows + " 个绘制方法、" + pane + " 个检视面板、" + tabs + " 个存储页签、" + opens + " 个开页签、" + statHooks + " 个属性取值"
+                    + (mv != null ? "，Thing.MarketValue 已接管" : "，没找到 Thing.MarketValue")
+                    + (bmv != null ? "，BaseMarketValue 已接管" : "，没找到 BaseMarketValue"));
+            }
+            catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 存储行价格挂载失败：" + e.Message); }
+        }
+
+        private static bool drawingStorageRow;
+        private static bool loggedMarketCaller;
+        // 防递归：算价本身会去读 def 的 MarketValue，不挡住会自己调自己。
+        private static bool computingPrice;
+
+        private static void StorageRowStart() { drawingStorageRow = true; }
+        private static void StorageRowEnd() { drawingStorageRow = false; }
+
+        /// <summary>
+        /// 物品的"市场价值"一律换成我们的现价。
+        /// 原因：存储界面那列黄字是原版画的，它读的是 Thing.MarketValue，
+        /// 而原版在绘制之前就已经把值算好（换页签/置标志位都拦不住），
+        /// 所以只能从这个最底层换掉。
+        /// 副作用：殖民地的"财富"和袭击点数会跟着按我们的价格走。
+        /// </summary>
+        private static bool StorageRowMarketValue(Thing __instance, ref float __result)
+        {
+            if (__instance != null && __instance.def != null
+                && __instance.def.category == ThingCategory.Item
+                && !computingPrice && !loggedMarketCaller && !drawingStorageRow)
+            {
+                loggedMarketCaller = true;
+                string st = "无";
+                try
+                {
+                    st = System.Environment.StackTrace;
+                    string[] lines = st.Split('\n');
+                    st = "";
+                    for (int i = 2; i < lines.Length && i < 14; i++) st += lines[i].Trim() + " <- ";
+                }
+                catch { }
+                DevLog.Msg("[DSH-ECONOMY] 谁在读物品市价：" + st);
+            }
+            if (!loggedMarketCaller && __instance != null && __instance.def != null
+                && __instance.def.category == ThingCategory.Item)
+            {
+                loggedMarketCaller = true;
+                DevLog.Msg("[DSH-ECONOMY] 市价属性被读：开关=" + drawingStorageRow + " 物品=" + __instance.def.defName);
+            }
+            if (computingPrice || __instance == null) return true;
+            if (!drawingStorageRow && !InStorageBuilding(__instance)) return true;
+            try
+            {
+                Map map = __instance.Map;
+                if (map == null) return true;
+                computingPrice = true;
+                __result = EconomyPrice.UnitPrice(__instance, map);
+                return false;
+            }
+            catch { return true; }
+            finally { computingPrice = false; }
+        }
+
+        private static int statLogs;
+        /// <summary>这件东西是不是正躺在一个存储建筑的格子上（仓库/货架/摊位）。</summary>
+        private static bool InStorageBuilding(Thing t)
+        {
+            try
+            {
+                Map map = t.Map;
+                if (map == null || !t.Spawned) return false;
+                var group = map.haulDestinationManager.SlotGroupAt(t.Position);
+                return group != null && group.parent is Building_Storage;
+            }
+            catch { return false; }
+        }
+
+        private static bool StorageRowStatValue(Thing __instance, StatDef stat, ref float __result)
+        {
+            if (__instance != null && stat == StatDefOf.MarketValue && __instance.def != null
+                && __instance.def.category == ThingCategory.Item && statLogs < 6)
+            {
+                statLogs++;
+                DevLog.Msg("[DSH-ECONOMY] 市价取值：开关=" + drawingStorageRow + " 物品=" + __instance.def.defName
+                    + " 原值=" + __result + " 位置=" + (__instance.Spawned ? __instance.Position.ToString() : "未生成"));
+            }
+            if (!drawingStorageRow || computingPrice || __instance == null || stat != StatDefOf.MarketValue) return true;
+            if (__instance.def == null || __instance.def.category != ThingCategory.Item) return true;
+            try
+            {
+                Map map = __instance.Map;
+                if (map == null) return true;
+                computingPrice = true;
+                __result = EconomyPrice.UnitPrice(__instance, map);
+                return false;
+            }
+            catch { return true; }
+            finally { computingPrice = false; }
+        }
+
+        private static bool StorageRowBaseMarketValue(ThingDef __instance, ref float __result)
+        {
+            if (!drawingStorageRow || computingPrice || __instance == null) return true;
+            try
+            {
+                Map map = Find.CurrentMap;
+                if (map == null) return true;
+                computingPrice = true;
+                __result = EconomyPrice.UnitPrice(__instance, map);
+                return false;
+            }
+            catch { return true; }
+            finally { computingPrice = false; }
         }
 
         // ---------------- 只搬不捡 ----------------
@@ -512,7 +881,7 @@ namespace DshEconomy
                     sb.Append(" ← ").Append(tn).Append('.').Append(mb.Name);
                     n++;
                 }
-                Log.Message(sb.ToString());
+                DevLog.Msg(sb.ToString());
             }
             catch { }
         }
@@ -540,7 +909,7 @@ namespace DshEconomy
                     }
                     catch { }
                 }
-                Log.Message("[DSH-ECONOMY] 只搬不捡：已挂 " + hooked + " 个派活入口");
+                DevLog.Msg("[DSH-ECONOMY] 只搬不捡：已挂 " + hooked + " 个派活入口");
             }
             catch (Exception e) { Log.Warning("[DSH-ECONOMY] 只搬不捡挂载失败：" + e.Message); }
         }
@@ -549,6 +918,104 @@ namespace DshEconomy
         // 栈追踪会被 JIT 内联吃掉调用层，"谁派的"查不出来。
         // 但每个 JobGiver 出任务时都会经过 TryIssueJobPackage，this 就是那个 JobGiver 实例，
         // 类名直接给出答案，不受内联影响。
+
+        /// <summary>
+        /// 弹出路径探测：私人物品被 DeSpawn 时打印调用栈。
+        /// 不猜是哪段代码弹的，让栈自己说话。
+        /// </summary>
+        /// <summary>???????"??????"??????????????</summary>
+        private static void MergeProbePostfix(Thing __instance, Thing other, bool __result)
+        {
+            try
+            {
+                if (!__result) return;
+                Thing a = __instance;
+                Thing b = other;
+                if (a == null || b == null || b.Destroyed) return;
+                if (a.def == null) return;
+                int now = Find.TickManager.TicksGame;
+                if (now - lastMergeProbe < 30) return;
+                lastMergeProbe = now;
+                Pawn oa = EconomyPrivate.OwnerOf(a);
+                Pawn ob = EconomyPrivate.OwnerOf(b);
+                DevLog.Msg("[MERGE] ???" + a.LabelShort + " ?" + a.stackCount
+                            + " ? " + (b.LabelShort ?? "?") + " ?" + b.stackCount
+                            + " ??=" + (oa == null ? "?" : oa.LabelShort)
+                            + "/" + (ob == null ? "?" : ob.LabelShort)
+                            + (oa != ob ? "  ?????" : ""));
+            }
+            catch { }
+        }
+
+        private static int lastMergeProbe = -99999;
+
+        private static void HookDespawnProbe(Harmony harmony)
+        {
+            try
+            {
+                MethodInfo despawn = AccessTools.Method(typeof(Thing), "DeSpawn", new[] { typeof(DestroyMode) });
+                if (despawn == null)
+                {
+                    Log.Warning("[DSH-ECONOMY] 弹出探测：没找到 Thing.DeSpawn(DestroyMode)");
+                    return;
+                }
+                harmony.Patch(despawn, prefix: new HarmonyMethod(typeof(MarketPatch).GetMethod(
+                    nameof(DespawnProbePrefix), BindingFlags.Static | BindingFlags.NonPublic)));
+                DevLog.Msg("[DSH-ECONOMY] 弹出探测：已挂 Thing.DeSpawn(DestroyMode)");
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[DSH-ECONOMY] 弹出探测挂载失败：" + e.Message);
+            }
+        }
+
+        private static void DespawnProbePrefix(Thing __instance)
+        {
+            try
+            {
+                if (__instance == null || __instance.def == null) return;
+                if (__instance.def.category != ThingCategory.Item) return;
+
+                // 只关心"本来在储物格里、现在要被拿走/弹出"的物品。
+                // 地上普通堆（拿饭、切堆）的 SlotGroup 是 null，自然不会刷。
+                SlotGroup group = __instance.GetSlotGroup();
+                if (group == null) return;
+
+                Pawn owner = EconomyPrivate.OwnerOf(__instance);
+
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                sb.Append("[EJECT-PATH] 储物格里的物品被 DeSpawn：").Append(__instance.LabelShort)
+                  .Append(" ×").Append(__instance.stackCount)
+                  .Append(" 归属=").Append(owner != null ? owner.LabelShort : "公共")
+                  .Append(" 位置=").Append(__instance.PositionHeld);
+                bool benign = false;
+                try
+                {
+                    StackTrace st = new StackTrace(1, false);
+                    int frames = Mathf.Min(st.FrameCount, 10);
+                    for (int i = 0; i < frames; i++)
+                    {
+                        MethodBase m = st.GetFrame(i).GetMethod();
+                        if (m == null) continue;
+                        string typeName = m.DeclaringType != null ? m.DeclaringType.Name : "?";
+                        // 正常行为：从整堆里切一份（SplitOff）或往背包里拿（TakeToInventory），
+                        // 这两条都会 DeSpawn/重建物品，不是"被弹出去"。
+                        if (typeName.IndexOf("SplitOff", StringComparison.OrdinalIgnoreCase) >= 0
+                            || m.Name.IndexOf("SplitOff", StringComparison.OrdinalIgnoreCase) >= 0
+                            || typeName.IndexOf("TakeToInventory", StringComparison.OrdinalIgnoreCase) >= 0
+                            || m.Name.IndexOf("TakeToInventory", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            benign = true;
+                        }
+                        sb.Append(" ← ").Append(typeName).Append(".").Append(m.Name);
+                    }
+                }
+                catch { }
+                if (benign) return;   // 切堆/拿取，不打日志
+                DevLog.Msg(sb.ToString());
+            }
+            catch { }
+        }
 
         private static void HookJobGiverProbe(Harmony harmony)
         {
@@ -770,11 +1237,355 @@ namespace DshEconomy
             }
         }
 
+        /// <summary>
+        /// 价格小窗的入口：挂住所有带 Thing 参数的 Widgets.InfoCardButton（信息卡 ⓘ 按钮），
+        /// 点一下就记下那件东西，右下角小窗跟着换。
+        /// </summary>
+        private static void HookPriceBoard(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                System.Text.StringBuilder sb = new System.Text.StringBuilder("[DSH-ECONOMY] 价格小窗入口候选：");
+                int hooked = 0;
+                MethodInfo[] ms = typeof(Widgets).GetMethods(BindingFlags.Public | BindingFlags.Static);
+                for (int i = 0; i < ms.Length; i++)
+                {
+                    MethodInfo m = ms[i];
+                    if (m == null || m.Name != "InfoCardButton") continue;
+                    ParameterInfo[] ps = m.GetParameters();
+                    bool hasThing = false;
+                    for (int k = 0; k < ps.Length; k++)
+                        if (ps[k].ParameterType == typeof(Thing)) { hasThing = true; break; }
+                    if (!hasThing) continue;
+                    sb.Append(" ").Append(m.Name).Append('(');
+                    for (int k = 0; k < ps.Length; k++)
+                    {
+                        if (k > 0) sb.Append(", ");
+                        sb.Append(ps[k].ParameterType.Name);
+                    }
+                    sb.Append(")");
+                    try
+                    {
+                        harmony.Patch(m, postfix: new HarmonyMethod(
+                            typeof(MarketPatch).GetMethod(nameof(PriceBoardButtonPostfix), BindingFlags.Static | BindingFlags.NonPublic)));
+                        hooked++;
+                    }
+                    catch (System.Exception e) { sb.Append("(失败:").Append(e.Message).Append(')'); }
+                }
+                sb.Append(" → 已挂 ").Append(hooked).Append(" 个");
+                DevLog.Msg(sb.ToString());
+            }
+            catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 价格小窗入口挂载失败：" + e.Message); }
+        }
+
+        private static void PriceBoardButtonPostfix(Thing thing, bool __result)
+        {
+            try
+            {
+                // 这个按钮是「画」的时候调的，每帧都会走一遍；
+                // 只有真的被点中时 __result 才是 true，否则会把小窗一直弹出来。
+                if (!__result) return;
+                if (thing == null) return;
+                if (thing.def == null || thing.def.category != ThingCategory.Item) return;
+                Window_PriceBoard.ShowFor(thing);
+            }
+            catch { }
+        }
+
+        /// <summary>摊位里的货物不画出来（跟箱子一样：只看得到箱子贴图）。</summary>
+        private static void HookHideMarketItems(HarmonyLib.Harmony harmony)        {
+            try
+            {
+                System.Text.StringBuilder sb = new System.Text.StringBuilder("[DSH-ECONOMY] 绘制方法候选：");
+                int hooked = 0;
+                MethodInfo[] ms = typeof(Thing).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                for (int i = 0; i < ms.Length; i++)
+                {
+                    MethodInfo m = ms[i];
+                    if (m == null) continue;
+                    // 只挂"画"的方法：名字以 Draw 开头，或叫 Print。
+                    // 千万别按 GUI/Overlay/Label 模糊匹配——那会把 get_Label() 一起拦掉，物品名就空了。
+                    bool isDraw = m.Name == "Print" || m.Name.StartsWith("Draw", System.StringComparison.Ordinal);
+                    if (!isDraw) continue;
+                    ParameterInfo[] ps = m.GetParameters();
+                    sb.Append(" ").Append(m.Name).Append('(');
+                    for (int k = 0; k < ps.Length; k++)
+                    {
+                        if (k > 0) sb.Append(", ");
+                        sb.Append(ps[k].ParameterType.Name);
+                    }
+                    sb.Append(")");
+                    try
+                    {
+                        harmony.Patch(m, prefix: new HarmonyMethod(
+                            typeof(MarketPatch).GetMethod(nameof(HideMarketItemPrefix), BindingFlags.Static | BindingFlags.NonPublic)));
+                        hooked++;
+                    }
+                    catch (System.Exception e2) { sb.Append("[挂钩失败:").Append(e2.Message).Append(']'); }
+                }
+                DevLog.Msg(sb.ToString());
+                DevLog.Msg("[DSH-ECONOMY] 摊位货物隐藏：已挂 " + hooked + " 个绘制方法");
+
+                // 让它点不到：只拦"返回 bool 且名字里带 Select"的属性（上次把 bool 结果写进 float 属性导致检视面板崩）
+                System.Text.StringBuilder sb2 = new System.Text.StringBuilder("[DSH-ECONOMY] 选中相关成员：");
+                int sel = 0;
+                PropertyInfo[] props = typeof(Thing).GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                for (int i = 0; i < props.Length; i++)
+                {
+                    PropertyInfo pi = props[i];
+                    if (pi == null || pi.Name.IndexOf("Select", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    MethodInfo g = pi.GetGetMethod(true);
+                    sb2.Append(" ").Append(pi.Name).Append('(').Append(pi.PropertyType.Name).Append(')');
+                    if (g == null || pi.PropertyType != typeof(bool)) continue;
+                    try
+                    {
+                        harmony.Patch(g, prefix: new HarmonyMethod(
+                            typeof(MarketPatch).GetMethod(nameof(MarketItemNotSelectable), BindingFlags.Static | BindingFlags.NonPublic)));
+                        sel++;
+                    }
+                    catch (System.Exception e3) { sb2.Append("[失败:").Append(e3.Message).Append(']'); }
+                }
+                DevLog.Msg(sb2.ToString());
+                DevLog.Msg("[DSH-ECONOMY] 摊位货物点不到：已挂 " + sel + " 个选中入口");
+
+                // 点摊位时把"选中的货"换成"摊位本体"：鼠标点击最终都走 Selector.SelectableUnderMouse
+                System.Text.StringBuilder sb3 = new System.Text.StringBuilder("[DSH-ECONOMY] Selector 方法：");
+                int sel2 = 0;
+                MethodInfo[] sms = typeof(Selector).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                for (int i = 0; i < sms.Length; i++)
+                {
+                    MethodInfo m = sms[i];
+                    if (m == null) continue;
+                    if (m.Name.IndexOf("Select", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    sb3.Append(" ").Append(m.Name).Append('(').Append(m.ReturnType.Name).Append(')');
+                    if (m.Name != "SelectableUnderMouse" || m.GetParameters().Length != 0) continue;
+                    try
+                    {
+                        harmony.Patch(m, postfix: new HarmonyMethod(
+                            typeof(MarketPatch).GetMethod(nameof(SelectMarketBuildingPostfix), BindingFlags.Static | BindingFlags.NonPublic)));
+                        sel2++;
+                    }
+                    catch (System.Exception e4) { sb3.Append("[失败:").Append(e4.Message).Append(']'); }
+                }
+                DevLog.Msg(sb3.ToString());
+                DevLog.Msg("[DSH-ECONOMY] 点摊位选本体：已挂 " + sel2 + " 个");
+
+                // 真正的落点：Selector.SelectUnderMouse（1.7 里没有 SelectableUnderMouse 了）
+                MethodInfo sum = AccessTools.Method(typeof(Selector), "SelectUnderMouse", new System.Type[0]);
+                if (sum != null)
+                {
+                    harmony.Patch(sum, prefix: new HarmonyMethod(
+                        typeof(MarketPatch).GetMethod(nameof(SelectMarketUnderMousePrefix), BindingFlags.Static | BindingFlags.NonPublic)));
+                    DevLog.Msg("[DSH-ECONOMY] 点摊位选本体：已挂 SelectUnderMouse");
+                }
+                else Log.Warning("[DSH-ECONOMY] 点摊位选本体：没找到 Selector.SelectUnderMouse");
+
+                // 更保险的一层：直接把"摊位上的货"从候选列表里剔掉，鼠标再怎么点都选不到它。
+                System.Text.StringBuilder sb4 = new System.Text.StringBuilder("[DSH-ECONOMY] 候选列表过滤：");
+                int filtered = 0;
+                MethodInfo[] cms = typeof(Selector).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                for (int i = 0; i < cms.Length; i++)
+                {
+                    MethodInfo m = cms[i];
+                    if (m == null) continue;
+                    if (m.Name.IndexOf("SelectableObjects", System.StringComparison.Ordinal) < 0) continue;
+                    if (m.GetParameters().Length != 0) continue;
+                    if (!typeof(System.Collections.Generic.IEnumerable<Thing>).IsAssignableFrom(m.ReturnType)) continue;
+                    sb4.Append(" ").Append(m.Name);
+                    try
+                    {
+                        harmony.Patch(m, postfix: new HarmonyMethod(
+                            typeof(MarketPatch).GetMethod(nameof(FilterMarketCandidates), BindingFlags.Static | BindingFlags.NonPublic)));
+                        filtered++;
+                    }
+                    catch (System.Exception e5) { sb4.Append("[失败:").Append(e5.Message).Append(']'); }
+                }
+                DevLog.Msg(sb4.ToString());
+                DevLog.Msg("[DSH-ECONOMY] 摊位货物不可点：已过滤 " + filtered + " 个候选列表");
+
+                // 最后一道：不管从哪条路进来，最后都要走 Selector.Select / SelectInternal。
+                // 只要选的是"摊位上的货"，就直接改选摊位本体。
+                System.Text.StringBuilder sb5 = new System.Text.StringBuilder("[DSH-ECONOMY] 选中入口：");
+                int sel3 = 0;
+                MethodInfo[] fms = typeof(Selector).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                for (int i = 0; i < fms.Length; i++)
+                {
+                    MethodInfo m = fms[i];
+                    if (m == null) continue;
+                    if (m.Name != "Select" && m.Name != "SelectInternal") continue;
+                    ParameterInfo[] ps = m.GetParameters();
+                    if (ps.Length < 1) continue;
+                    sb5.Append(" ").Append(m.Name).Append('(').Append(ps[0].ParameterType.Name).Append(')');
+                    if (ps[0].ParameterType != typeof(Thing) && ps[0].ParameterType != typeof(object)) continue;
+                    try
+                    {
+                        harmony.Patch(m, prefix: new HarmonyMethod(
+                            typeof(MarketPatch).GetMethod(nameof(SelectMarketBuildingPrefix), BindingFlags.Static | BindingFlags.NonPublic)));
+                        sel3++;
+                    }
+                    catch (System.Exception e6) { sb5.Append("[失败:").Append(e6.Message).Append(']'); }
+                }
+                DevLog.Msg(sb5.ToString());
+                DevLog.Msg("[DSH-ECONOMY] 摊位货物不可点：已挂 " + sel3 + " 个 Select 入口");
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[DSH-ECONOMY] 隐藏摊位货物挂载失败：" + e.Message);
+            }
+        }
+
+        private static bool HideMarketItemPrefix(Thing __instance)
+        {
+            return !IsOnMarket(__instance);
+        }
+
+        /// <summary>摊位里的货点不到（选不中）。只挂 bool 属性，绝不能挂 float 的。</summary>
+        private static bool MarketItemNotSelectable(Thing __instance, ref bool __result)
+        {
+            if (IsOnMarket(__instance))
+            {
+                __result = false;
+                return false;
+            }
+            return true;
+        }
+
+        private static int lastSelectLog;
+
+        /// <summary>
+        /// 最后一道闸：不管从哪条路进来，只要想选中的是"摊位上的货"，就改成选摊位本体。
+        /// 日志证明点选拦截生效后货仍被选中，说明还有第二条路直接调 Select，这里一并堵住。
+        /// </summary>
+        private static bool SelectMarketBuildingPrefix(object obj, Selector __instance)
+        {
+            try
+            {
+                if (__instance == null) return true;
+                Thing t = obj as Thing;
+                if (t == null) return true;
+                if (!IsOnMarket(t)) return true;
+                Building b = MarketOf(t);
+                if (b == null) return true;
+                __instance.ClearSelection();
+                __instance.Select((Thing)b);
+                int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+                if (now - lastSelectLog2 > 120)
+                {
+                    lastSelectLog2 = now;
+                    DevLog.Msg("[MARKET] 选中改道：把货物换成了摊位 @ " + t.Position);
+                }
+                return false;
+            }
+            catch { return true; }
+        }
+
+        private static int lastSelectLog2;
+
+        /// <summary>这堆货所在的摊位；不在摊位上就是 null。</summary>
+        private static Building_Market MarketOf(Thing t)
+        {
+            try
+            {
+                if (t == null || !t.Spawned) return null;
+                Map m = t.Map;
+                if (m == null || m.haulDestinationManager == null) return null;
+                SlotGroup g = m.haulDestinationManager.SlotGroupAt(t.Position);
+                if (g == null) return null;
+                return g.parent as Building_Market;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>把"摊位上的货"从鼠标候选里剔掉：看不见的货也不该被点到。</summary>
+        private static void FilterMarketCandidates(ref System.Collections.Generic.IEnumerable<Thing> __result)
+        {
+            try
+            {
+                if (__result == null) return;
+                System.Collections.Generic.List<Thing> src = __result as System.Collections.Generic.List<Thing>;
+                if (src == null) src = new System.Collections.Generic.List<Thing>(__result);
+                bool any = false;
+                for (int i = src.Count - 1; i >= 0; i--)
+                {
+                    if (IsOnMarket(src[i])) { src.RemoveAt(i); any = true; }
+                }
+                if (any) __result = src;
+            }
+            catch { }
+        }
+
+        private static bool SelectMarketUnderMousePrefix()
+        {
+            try
+            {
+                if (Find.DesignatorManager != null && Find.DesignatorManager.SelectedDesignator != null) return true;
+                Map map = Find.CurrentMap;
+                if (map == null) return true;
+                IntVec3 c = UI.MouseCell();
+                if (!c.InBounds(map)) return true;
+                SlotGroup g = map.haulDestinationManager.SlotGroupAt(c);
+                if (g == null || !(g.parent is Building_Market)) return true;
+                bool hasItem = false;
+                System.Collections.Generic.List<Thing> list = c.GetThingList(map);
+                for (int i = 0; i < list.Count; i++)
+                {
+                    Thing t = list[i];
+                    if (t != null && t.def != null && t.def.category == ThingCategory.Item) { hasItem = true; break; }
+                }
+                if (!hasItem) return true;
+                Building b = g.parent as Building;
+                if (b == null) return true;
+                Find.Selector.ClearSelection();
+                Find.Selector.Select((Thing)b);
+                int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+                if (now - lastSelectLog > 120)
+                {
+                    lastSelectLog = now;
+                    DevLog.Msg("[MARKET] 点选拦截生效：把货物换成了摊位 @ " + c);
+                }
+                return false;
+            }
+            catch { return true; }
+        }
+
+        /// <summary>鼠标指到摊位的货上时，把目标换成摊位本体（点下去选的是摊位）。</summary>
+        private static void SelectMarketBuildingPostfix(ref TargetInfo __result)
+        {
+            try
+            {
+                Thing t = __result.Thing;
+                if (t == null || !IsOnMarket(t)) return;
+                SlotGroup g = t.Map.haulDestinationManager.SlotGroupAt(t.Position);
+                Building b = (g != null) ? (g.parent as Building) : null;
+                if (b == null) return;
+                __result = new TargetInfo(b);
+            }
+            catch { }
+        }
+
+        /// <summary>这件东西是不是摆在我们市场摊位的格子上。</summary>
+        private static bool IsOnMarket(Thing t)
+        {
+            try
+            {
+                if (t == null || !t.Spawned) return false;
+                ThingDef d = t.def;
+                if (d == null || d.category != ThingCategory.Item) return false;
+                Map m = t.Map;
+                if (m == null || m.haulDestinationManager == null) return false;
+                SlotGroup g = m.haulDestinationManager.SlotGroupAt(t.Position);
+                if (g == null) return false;
+                return g.parent is Building_Market;
+            }
+            catch { return false; }
+        }
+
         /// <summary>任务正常成功结束后，就地结算订单。</summary>
         private static void EndJobPostfix(Pawn_JobTracker __instance, JobCondition condition)
         {
             Pawn p = __instance.pawn;
             if (p != null && p.IsColonist) TryNoteAnimalGather(__instance.curJob);
+            EconomyRestock.NoteEnd(__instance.curJob, condition, p);
 
             if (p != null && p.IsColonist)
             {
@@ -858,5 +1669,135 @@ namespace DshEconomy
                 if (res != null) EconomyProductionStats.Note(res, EconomyProductionStats.Source.Gather, 1);
             }
         }
+
+        // ---------------- 食物去向：事件级探针 ----------------
+        private static int lastFoodTrace = -99999;
+
+        private static void FoodTraceLog(string text)
+        {
+            try
+            {
+                int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+                if (now - lastFoodTrace < 30) return;
+                lastFoodTrace = now;
+                DevLog.Msg("[FOODT] " + text);
+            }
+            catch { }
+        }
+
+        private static void HookFoodTrace(Harmony harmony)
+        {
+            int hooked = 0;
+
+            // A. 物品进入容器（背包/手上/箱子）—— 记录并堆后的实际堆
+            try
+            {
+                foreach (MethodInfo m in typeof(ThingOwner<Thing>).GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (m.Name != "TryAdd" || m.GetParameters().Length != 2) continue;
+                    harmony.Patch(m, postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(TryAddFoodTracePostfix), BindingFlags.Static | BindingFlags.NonPublic)));
+                    hooked++;
+                }
+            }
+            catch { }
+
+            // B. 物品落到地上 —— 搬运失败时会走这里
+            try
+            {
+                foreach (MethodInfo m in typeof(GenPlace).GetMethods(BindingFlags.Public | BindingFlags.Static))
+                {
+                    if (m.Name != "TryPlaceThing") continue;
+                    ParameterInfo[] ps = m.GetParameters();
+                    if (ps.Length != 4) continue;
+                    if (ps[0].ParameterType != typeof(Thing) || ps[1].ParameterType != typeof(IntVec3)) continue;
+                    harmony.Patch(m, postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(PlaceFoodTracePostfix), BindingFlags.Static | BindingFlags.NonPublic)));
+                    hooked++;
+                }
+            }
+            catch { }
+
+            // C. 物品从容器里被移除 —— 口粮消失会走这里
+            try
+            {
+                foreach (MethodInfo m in typeof(ThingOwner<Thing>).GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (m.Name != "Remove" || m.GetParameters().Length != 1) continue;
+                    if (m.GetParameters()[0].ParameterType != typeof(Thing)) continue;
+                    harmony.Patch(m, postfix: new HarmonyMethod(typeof(MarketPatch).GetMethod(nameof(RemoveFoodTracePostfix), BindingFlags.Static | BindingFlags.NonPublic)));
+                    hooked++;
+                }
+            }
+            catch { }
+
+            DevLog.Msg("[DSH-ECONOMY] 食物去向探针：已挂 " + hooked + " 个");
+        }
+
+        private static void TryAddFoodTracePostfix(ThingOwner<Thing> __instance, Thing __0, bool __result)
+        {
+            try
+            {
+                if (!__result || __instance == null || __0 == null) return;
+                if (__0.def == null || !__0.def.IsIngestible) return;
+                string who = "未知";
+                if (__instance.Owner is Pawn_InventoryTracker it && it.pawn != null) who = "背包:" + it.pawn.LabelShort;
+                else if (__instance.Owner is Pawn_CarryTracker ct && ct.pawn != null) who = "手上:" + ct.pawn.LabelShort;
+                else if (__instance.Owner is Thing th) who = "容器:" + th.LabelShort;
+                FoodTraceLog("进入 " + who + " " + __0.LabelShort + " ×" + __0.stackCount
+                    + " 归属=" + OwnerName(__0));
+            }
+            catch { }
+        }
+
+        private static void PlaceFoodTracePostfix(Thing __0, IntVec3 __1, Map __2, bool __result)
+        {
+            try
+            {
+                if (!__result || __0 == null || __0.def == null || !__0.def.IsIngestible) return;
+                FoodTraceLog("落地 " + __0.LabelShort + " ×" + __0.stackCount + " @ " + __1
+                    + " 归属=" + OwnerName(__0));
+            }
+            catch { }
+        }
+
+        private static void RemoveFoodTracePostfix(ThingOwner<Thing> __instance, Thing __0)
+        {
+            try
+            {
+                if (__instance == null || __0 == null) return;
+                if (__0.def == null || !__0.def.IsIngestible) return;
+                if (!(__instance.Owner is Pawn_InventoryTracker it) || it.pawn == null) return;
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                sb.Append("离开 背包:").Append(it.pawn.LabelShort).Append(" ").Append(__0.LabelShort)
+                  .Append(" ×").Append(__0.stackCount).Append(" 归属=").Append(OwnerName(__0));
+                try
+                {
+                    System.Diagnostics.StackTrace st = new System.Diagnostics.StackTrace(1, false);
+                    int frames = 0;
+                    for (int f = 0; f < st.FrameCount && frames < 8; f++)
+                    {
+                        System.Reflection.MethodBase mb = st.GetFrame(f) == null ? null : st.GetFrame(f).GetMethod();
+                        if (mb == null) continue;
+                        if (mb.Name == "RemoveFoodTracePostfix") continue;
+                        sb.Append(" <- ").Append(mb.Name);
+                        frames++;
+                    }
+                }
+                catch { }
+                FoodTraceLog(sb.ToString());
+            }
+            catch { }
+        }
+
+        private static string OwnerName(Thing t)
+        {
+            try
+            {
+                Pawn o = EconomyPrivate.OwnerOf(t);
+                return o == null ? "公共" : o.LabelShort;
+            }
+            catch { return "?"; }
+        }
+
     }
 }
+

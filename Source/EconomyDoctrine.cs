@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -122,7 +122,7 @@ namespace DshEconomy
                             pre += pc.def.defName + " ";
                     }
                 }
-                Log.Message("[DOCTRINE] 文化=" + (ideo != null ? ideo.name : "无")
+                DevLog.Msg("[DOCTRINE] 文化=" + (ideo != null ? ideo.name : "无")
                     + " 模因=[" + list.Trim() + "] 本mod戒律=[" + pre.Trim() + "] → " + (IsPublic(map) ? "公有制" : "私有制"));
             }
             catch { }
@@ -202,3 +202,4 @@ namespace DshEconomy
         }
     }
 }
+

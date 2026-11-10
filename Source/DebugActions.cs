@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using LudeonTK;
@@ -44,7 +44,7 @@ namespace DshEconomy
                     added++;
                 }
             }
-            Log.Message("[DSH-ECONOMY] 已为 " + added + " 个人形种族启用「经济」页签");
+            DevLog.Msg("[DSH-ECONOMY] 已为 " + added + " 个人形种族启用「经济」页签");
         }
 
         /// <summary>
@@ -78,7 +78,7 @@ namespace DshEconomy
                     added++;
                 }
             }
-            Log.Message("[DSH-ECONOMY] 已为 " + added + " 种存储建筑启用「补货」页签");
+            DevLog.Msg("[DSH-ECONOMY] 已为 " + added + " 种存储建筑启用「补货」页签");
         }
 
         private static void AttachItemTags()
@@ -122,7 +122,7 @@ namespace DshEconomy
                     if (stat.parts[i] is StatPart_IndoorWorkbench) present = true;
                 }
                 if (!present) stat.parts.Add(new StatPart_IndoorWorkbench());
-                Log.Message("[DSH-ECONOMY] 屋内惩罚部件已挂载=" + present + " 部件总数=" + stat.parts.Count);
+                DevLog.Msg("[DSH-ECONOMY] 屋内惩罚部件已挂载=" + present + " 部件总数=" + stat.parts.Count);
             }
             catch (Exception e)
             {
@@ -148,7 +148,7 @@ namespace DshEconomy
                     if (stat.parts[i] is StatPart_Satisfaction) present = true;
                 }
                 if (!present) stat.parts.Add(new StatPart_Satisfaction());
-                Log.Message("[DSH-ECONOMY] 满意度速度部件已挂载=" + present + " 部件总数=" + stat.parts.Count);
+                DevLog.Msg("[DSH-ECONOMY] 满意度速度部件已挂载=" + present + " 部件总数=" + stat.parts.Count);
             }
             catch (Exception e)
             {
@@ -167,7 +167,7 @@ namespace DshEconomy
                 if (root.subNodes[i] is JobGiver_EconomyPatientRest) return;
             }
             root.subNodes.Insert(1, new JobGiver_EconomyPatientRest());
-            Log.Message("[DSH-ECONOMY] 病人优先躺床：已注入 Humanlike 思维树（第 2 位）");
+            DevLog.Msg("[DSH-ECONOMY] 病人优先躺床：已注入 Humanlike 思维树（第 2 位）");
         }
 
         static EconomyBootstrap()
@@ -197,7 +197,7 @@ namespace DshEconomy
             {
                 Log.Warning("[DSH-ECONOMY] Harmony 初始化异常，已跳过：" + e.Message);
             }
-            Log.Message(EconomyRegistry.Describe());
+            DevLog.Msg(EconomyRegistry.Describe());
             bool hasButton = DefDatabase<MainButtonDef>.GetNamedSilentFail("DshEconomy") != null;
             int tagged = 0;
             List<ThingDef> allDefs = DefDatabase<ThingDef>.AllDefsListForReading;
@@ -241,7 +241,18 @@ namespace DshEconomy
             int mineRecipes = mineDef != null && mineDef.AllRecipes != null ? mineDef.AllRecipes.Count : -1;
             int benchRecipes = benchDef != null && benchDef.AllRecipes != null ? benchDef.AllRecipes.Count : -1;
 
-            Log.Message("[DSH-ECONOMY] 主按钮已加载=" + hasButton
+            DevLog.Msg("[DSH-ECONOMY] 构建标记 = 2026-11-11-C DSHSTAMPX（日志彻底静音）");
+            try
+            {
+                UnityEngine.Texture2D ownTex = Verse.ContentFinder<UnityEngine.Texture2D>.Get("UI/Issues/DshEco_Ownership", false);
+                DevLog.Msg("[DSH-ECONOMY] 所有权贴图=" + (ownTex != null)
+                    + (ownTex != null ? (" 尺寸=" + ownTex.width + "x" + ownTex.height) : "（载入失败，路径 UI/Issues/DshEco_Ownership）"));
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[DSH-ECONOMY] 所有权贴图探测异常：" + e.Message);
+            }
+            DevLog.Msg("[DSH-ECONOMY] 主按钮已加载=" + hasButton
                 + " 分类=" + EconomyRegistry.Categories.Count
                 + " 物品=" + EconomyRegistry.CoveredCount
                 + " 带标签物品定义=" + tagged
@@ -259,9 +270,9 @@ namespace DshEconomy
         [DebugAction("DSH经济", "打印注册表摘要", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         public static void PrintSummary()
         {
-            Log.Message(EconomyRegistry.Describe());
+            DevLog.Msg(EconomyRegistry.Describe());
             ThingDef currency = EconomyRegistry.PrimaryCurrency;
-            Log.Message("[DSH经济] 主货币：" + (currency != null ? currency.defName : "未找到"));
+            DevLog.Msg("[DSH经济] 主货币：" + (currency != null ? currency.defName : "未找到"));
         }
 
                 [DebugAction("DSH经济", "私产诊断", actionType = DebugActionType.Action,
@@ -275,7 +286,7 @@ namespace DshEconomy
             for (int i = 0; i < crew.Count; i++)
             {
                 Pawn p = crew[i];
-                Log.Message("[DSH-ECONOMY] 私产诊断 " + p.LabelShort
+                DevLog.Msg("[DSH-ECONOMY] 私产诊断 " + p.LabelShort
                     + "：私有银=" + EconomyBank.PrivateSilver(map, p)
                     + " 私有物=" + EconomyPrivate.OwnedItems(p, map).Count + " 件");
 
@@ -285,7 +296,7 @@ namespace DshEconomy
                 {
                     Thing t = inner[j];
                     if (t.def != ThingDefOf.Silver) continue;
-                    Log.Message("    背包银 " + t.stackCount
+                    DevLog.Msg("    背包银 " + t.stackCount
                         + " 组件=" + (EconomyPrivate.TagOf(t) != null)
                         + " 归属=" + (EconomyPrivate.OwnerOf(t) == null
                             ? "无" : EconomyPrivate.OwnerOf(t).LabelShort));
@@ -308,7 +319,7 @@ namespace DshEconomy
                 n++;
                 if (n <= 60) sb.Append(def.defName).Append(' ');
             }
-            Log.Message("[DSH经济] 未归类 " + n + " 种：" + sb);
+            DevLog.Msg("[DSH经济] 未归类 " + n + " 种：" + sb);
         }
 
         [DebugAction("DSH经济", "运行自检", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -373,7 +384,7 @@ namespace DshEconomy
             }
 
             sb.AppendLine("纳入 " + EconomyRegistry.CoveredCount + " 种，分类 " + EconomyRegistry.Categories.Count + " 个");
-            if (fails == 0) Log.Message("[DSH经济] 自检通过\n" + sb);
+            if (fails == 0) DevLog.Msg("[DSH经济] 自检通过\n" + sb);
             else Log.Error("[DSH经济] 自检失败 " + fails + " 项\n" + sb);
         }
 
@@ -395,7 +406,7 @@ namespace DshEconomy
             Map map = Find.CurrentMap;
             if (map == null) return;
             EconomyBank.GiveColonySilver(map, 1000, map.Center);
-            Log.Message("[DSH经济] 国库 +1000，现有 " + EconomyBank.ColonySilver(map) + " 银");
+            DevLog.Msg("[DSH经济] 国库 +1000，现有 " + EconomyBank.ColonySilver(map) + " 银");
         }
 
         [DebugAction("DSH经济", "全体私银 +100（每人）", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -409,7 +420,7 @@ namespace DshEconomy
             {
                 n += EconomyBank.SplitSilverToPrivate(map, colonists[i], 100);
             }
-            Log.Message("[DSH经济] 发放私银 " + n + " 银给 " + colonists.Count + " 人");
+            DevLog.Msg("[DSH经济] 发放私银 " + n + " 银给 " + colonists.Count + " 人");
         }
 
         [DebugAction("DSH经济", "欠薪：开启（按设定次数自动欠）", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -422,7 +433,7 @@ namespace DshEconomy
             c.arrearsAutoTimes = Mathf.Max(1, c.arrearsAutoTimes);
             c.arrearsEnabled = true;
             c.arrearsRemaining = c.arrearsAutoTimes;
-            Log.Message("[DSH经济] 欠薪开启：接下来 " + c.arrearsRemaining + " 期不发工资");
+            DevLog.Msg("[DSH经济] 欠薪开启：接下来 " + c.arrearsRemaining + " 期不发工资");
         }
 
         [DebugAction("DSH经济", "欠薪：关闭并清零计数", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -436,7 +447,7 @@ namespace DshEconomy
             c.arrearsRemaining = 0;
             c.arrearsCount = 0;
             EconomySatisfaction.RecomputeAll(map);
-            Log.Message("[DSH经济] 欠薪状态已清零");
+            DevLog.Msg("[DSH经济] 欠薪状态已清零");
         }
 
         [DebugAction("DSH经济", "欠薪：自动次数 +1", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -445,7 +456,7 @@ namespace DshEconomy
             MapEconomyComponent c = Find.CurrentMap?.GetComponent<MapEconomyComponent>();
             if (c == null) return;
             c.arrearsAutoTimes = Mathf.Clamp(c.arrearsAutoTimes + 1, 1, 50);
-            Log.Message("[DSH经济] 欠薪自动次数 = " + c.arrearsAutoTimes);
+            DevLog.Msg("[DSH经济] 欠薪自动次数 = " + c.arrearsAutoTimes);
         }
 
         [DebugAction("DSH经济", "欠薪：自动次数 -1", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -454,7 +465,7 @@ namespace DshEconomy
             MapEconomyComponent c = Find.CurrentMap?.GetComponent<MapEconomyComponent>();
             if (c == null) return;
             c.arrearsAutoTimes = Mathf.Clamp(c.arrearsAutoTimes - 1, 1, 50);
-            Log.Message("[DSH经济] 欠薪自动次数 = " + c.arrearsAutoTimes);
+            DevLog.Msg("[DSH经济] 欠薪自动次数 = " + c.arrearsAutoTimes);
         }
 
 
@@ -473,7 +484,7 @@ namespace DshEconomy
                 cs[i].health.AddHediff(h);
             }
             EconomySatisfaction.RecomputeAll(map);
-            Log.Message("[DSH经济] 已给 " + cs.Count + " 人加上重度营养不良");
+            DevLog.Msg("[DSH经济] 已给 " + cs.Count + " 人加上重度营养不良");
         }
 
         [DebugAction("DSH经济", "健康：极度疲劳", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -493,7 +504,7 @@ namespace DshEconomy
                 cs[i].health.AddHediff(h);
             }
             EconomySatisfaction.RecomputeAll(map);
-            Log.Message("[DSH经济] 已给 " + cs.Count + " 人加上极度疲劳（" + def.defName + "）");
+            DevLog.Msg("[DSH经济] 已给 " + cs.Count + " 人加上极度疲劳（" + def.defName + "）");
         }
 
         [DebugAction("DSH经济", "健康：添加 3 处外伤", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -515,7 +526,7 @@ namespace DshEconomy
                 }
             }
             EconomySatisfaction.RecomputeAll(map);
-            Log.Message("[DSH经济] 已给 " + cs.Count + " 人各加 3 处外伤");
+            DevLog.Msg("[DSH经济] 已给 " + cs.Count + " 人各加 3 处外伤");
         }
 
         [DebugAction("DSH经济", "健康：清除上述状态", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -539,7 +550,7 @@ namespace DshEconomy
                 }
             }
             EconomySatisfaction.RecomputeAll(map);
-            Log.Message("[DSH经济] 已清除营养不良/疲劳/外伤");
+            DevLog.Msg("[DSH经济] 已清除营养不良/疲劳/外伤");
         }
 
         [DebugAction("DSH经济", "贫富差距：打印统计", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -549,7 +560,7 @@ namespace DshEconomy
             if (map == null) return;
             List<Pawn> cs = map.mapPawns.FreeColonists;
             for (int i = 0; i < cs.Count; i++)
-                Log.Message("[DSH经济] 贫富差距 " + cs[i].LabelShort + "：" + EconomyWealthGap.Describe(cs[i]));
+                DevLog.Msg("[DSH经济] 贫富差距 " + cs[i].LabelShort + "：" + EconomyWealthGap.Describe(cs[i]));
         }
 
         [DebugAction("DSH经济", "立即发薪", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -559,7 +570,7 @@ namespace DshEconomy
             MapEconomyComponent comp = map != null ? map.GetComponent<MapEconomyComponent>() : null;
             if (comp == null) return;
             int paid = comp.PayWagesNow();
-            Log.Message("[DSH经济] 立即发薪：" + paid + " 银");
+            DevLog.Msg("[DSH经济] 立即发薪：" + paid + " 银");
         }
 
         [DebugAction("DSH经济", "重算全员满意度", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -570,7 +581,7 @@ namespace DshEconomy
             EconomySatisfaction.RecomputeAll(map);
             List<Pawn> colonists = map.mapPawns.FreeColonists;
             for (int i = 0; i < colonists.Count; i++) Need_Satisfaction.Sync(colonists[i]);
-            Log.Message("[DSH经济] 满意度已重算");
+            DevLog.Msg("[DSH经济] 满意度已重算");
         }
 
         [DebugAction("DSH经济", "打印经济状态", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -606,7 +617,7 @@ namespace DshEconomy
                     + " 人日  今日 " + hours.ToString("0.0") + " 小时  满意度 "
                     + EconomyLedger.GetSatisfaction(p).ToString("0") + over);
             }
-            Log.Message("[DSH经济] 状态\n" + sb);
+            DevLog.Msg("[DSH经济] 状态\n" + sb);
         }
 
         [DebugAction("DSH经济", "全体今日劳动 +2 小时", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -632,7 +643,7 @@ namespace DshEconomy
                 comp.AddDailyWork(colonists[i], hours * 2500f);
             }
             EconomySatisfaction.RecomputeAll(map);
-            Log.Message("[DSH经济] 全体今日劳动 +" + hours.ToString("0") + " 小时，已重算满意度");
+            DevLog.Msg("[DSH经济] 全体今日劳动 +" + hours.ToString("0") + " 小时，已重算满意度");
         }
 
         [DebugAction("DSH经济", "清空今日劳动小时", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -643,7 +654,7 @@ namespace DshEconomy
             if (comp == null) return;
             comp.ClearDailyWork();
             EconomySatisfaction.RecomputeAll(map);
-            Log.Message("[DSH经济] 今日劳动小时已清零");
+            DevLog.Msg("[DSH经济] 今日劳动小时已清零");
         }
 
         [DebugAction("DSH经济", "清空满意度事件", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -653,7 +664,7 @@ namespace DshEconomy
             if (map == null) return;
             EconomySatisfactionEvents.Clear();
             EconomySatisfaction.RecomputeAll(map);
-            Log.Message("[DSH经济] 满意度事件已清空");
+            DevLog.Msg("[DSH经济] 满意度事件已清空");
         }
 
         [DebugAction("DSH经济", "强制罢工（3 人）", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -662,7 +673,7 @@ namespace DshEconomy
             Map map = Find.CurrentMap;
             if (map == null) return;
             int n = EconomyUnrest.ForceStrike(map, 10f);
-            Log.Message("[DSH经济] 强制罢工 " + n + " 人");
+            DevLog.Msg("[DSH经济] 强制罢工 " + n + " 人");
         }
 
         [DebugAction("DSH经济", "强制暴动（3 人）", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -671,7 +682,7 @@ namespace DshEconomy
             Map map = Find.CurrentMap;
             if (map == null) return;
             int n = EconomyUnrest.ForceRiot(map, 10f);
-            Log.Message("[DSH经济] 强制暴动 " + n + " 人");
+            DevLog.Msg("[DSH经济] 强制暴动 " + n + " 人");
         }
 
         [DebugAction("DSH经济", "强制革命（3 人）", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -680,14 +691,14 @@ namespace DshEconomy
             Map map = Find.CurrentMap;
             if (map == null) return;
             int n = EconomyUnrest.ForceRevolution(map, 10f);
-            Log.Message("[DSH经济] 强制革命 " + n + " 人");
+            DevLog.Msg("[DSH经济] 强制革命 " + n + " 人");
         }
 
         [DebugAction("DSH经济", "清空动乱状态", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         public static void ClearUnrest()
         {
             EconomyUnrest.ClearRuntimeState();
-            Log.Message("[DSH经济] 动乱运行状态已清空");
+            DevLog.Msg("[DSH经济] 动乱运行状态已清空");
         }
 
         [DebugAction("DSH经济", "导出参考贴图", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
@@ -697,3 +708,22 @@ namespace DshEconomy
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

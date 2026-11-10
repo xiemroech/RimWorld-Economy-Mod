@@ -1,4 +1,4 @@
-using RimWorld;
+﻿using RimWorld;
 using UnityEngine;
 using Verse;
 using Verse.AI;
@@ -197,7 +197,7 @@ namespace DshEconomy
             {
                 if (t == null || p == null || map == null) return;
                 Pawn itemOwner = EconomyPrivate.OwnerOf(t);
-                Log.Message("[HAULFAIL] " + p.LabelShort + " 搬 " + t.LabelShort + " def=" + t.def.defName
+                DevLog.Msg("[HAULFAIL] " + p.LabelShort + " 搬 " + t.LabelShort + " def=" + t.def.defName
                     + " 物主=" + (itemOwner != null ? itemOwner.LabelShort : "公共"));
                 foreach (SlotGroup g in map.haulDestinationManager.AllGroupsListForReading)
                 {
@@ -240,7 +240,7 @@ namespace DshEconomy
                         try { bypassAllowed = g.Settings.AllowedToAccept(t); }
                         finally { StorageSettingsOwnerIndex.Bypass = oldBypass; }
                     }
-                    Log.Message("[HAULFAIL]   组 " + (g.parent != null ? g.parent.ToString() : "?")
+                    DevLog.Msg("[HAULFAIL]   组 " + (g.parent != null ? g.parent.ToString() : "?")
                         + " 主=" + (gOwner != null ? gOwner.LabelShort : "公共")
                         + " 缓存主=" + (cachedOwner != null ? cachedOwner.LabelShort : "无")
                         + " 优先级=" + (g.Settings != null ? g.Settings.Priority.ToString() : "?")

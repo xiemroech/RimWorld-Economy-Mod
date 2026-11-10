@@ -373,6 +373,27 @@ namespace DshEconomy
             if (p == null) return 0f;
             float v = privateSilver;
 
+            // 用私有物品索引：它已覆盖 背包 / 穿戴 / 手持 / 私有仓库（箱子、货架、地窖）。
+            // 以前只扫背包，东西一进箱子财富就"蒸发"，等于鼓励藏私逃税。
+            Map map = p.MapHeld;
+            if (map == null) map = p.Map;
+            if (map != null)
+            {
+                List<Thing> owned = EconomyPrivate.OwnedItems(p, map);
+                if (owned != null)
+                {
+                    for (int i = 0; i < owned.Count; i++)
+                    {
+                        Thing t = owned[i];
+                        if (t == null || t.Destroyed) continue;
+                        if (t.def == RimWorld.ThingDefOf.Silver) continue;
+                        v += t.MarketValue * t.stackCount;
+                    }
+                }
+                return v;
+            }
+
+            // 不在任何地图上（远征途中）：退回只扫随身。
             if (p.apparel != null)
             {
                 List<Apparel> worn = p.apparel.WornApparel;

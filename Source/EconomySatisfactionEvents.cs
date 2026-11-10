@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text;
 using Verse;
 
@@ -54,7 +54,7 @@ namespace DshEconomy
                 expireTick = Now + days * 60000
             };
             active.Add(e);
-            Log.Message("[SAT] 事件开始：" + pawn.LabelShort + " " + label + " 每日 " + daily.ToString("+0.0;-0.0")
+            DevLog.Msg("[SAT] 事件开始：" + pawn.LabelShort + " " + label + " 每日 " + daily.ToString("+0.0;-0.0")
                 + " 持续 " + days + " 天（当前同名 " + CountOf(pawn, label) + " 层）");
 
             // 满意度是即时结算的，事件一变当场重算，不用等下一次日结算
@@ -124,7 +124,7 @@ namespace DshEconomy
                 if (e.pawn != pawn) continue;
                 sum += e.daily;
                 e.applied += e.daily;
-                Log.Message("[SAT] " + pawn.LabelShort + " 事件结算 " + e.label + " "
+                DevLog.Msg("[SAT] " + pawn.LabelShort + " 事件结算 " + e.label + " "
                     + e.daily.ToString("+0.0;-0.0") + "（累计 " + e.applied.ToString("+0.0;-0.0") + "）");
             }
             return sum;
@@ -137,7 +137,7 @@ namespace DshEconomy
             {
                 if (now >= active[i].expireTick)
                 {
-                    Log.Message("[SAT] 事件结束：" + active[i].pawn.LabelShort + " " + active[i].label
+                    DevLog.Msg("[SAT] 事件结束：" + active[i].pawn.LabelShort + " " + active[i].label
                         + "（共结算 " + active[i].applied.ToString("+0.0;-0.0") + "）");
                     active.RemoveAt(i);
                 }
@@ -195,3 +195,4 @@ namespace DshEconomy
         }
     }
 }
+

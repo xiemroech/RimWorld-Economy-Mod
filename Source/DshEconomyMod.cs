@@ -39,6 +39,9 @@ namespace DshEconomy
         // 开发者模式：显示调试按钮
         public bool debugMode;
 
+        // 打印诊断日志（排查用；默认关闭，否则 Player.log 会被刷屏）
+        public bool verboseLog;
+
         // 开发者：高传染（概率 ×5、心跳 15 tick）
         public bool devFastSpread;
 
@@ -64,6 +67,9 @@ namespace DshEconomy
 
         // 结构性短缺信的筛选（白名单语义：空的 = 全都要）
         public bool shortageVanillaOnly;
+
+        // 衣服耐久低于这个比例就自动转成公有（0 = 关闭）
+        public float apparelPublicizeAt = 0.25f;
         public List<string> shortageOnlyCats = new List<string>();
         public List<string> shortageOnlyDefs = new List<string>();
 
@@ -116,6 +122,7 @@ namespace DshEconomy
             Scribe_Values.Look(ref payIntervalHours, "payIntervalHours", 0);
             Scribe_Values.Look(ref sendPayLetter, "sendPayLetter", true);
             Scribe_Values.Look(ref debugMode, "debugMode", false);
+            Scribe_Values.Look(ref verboseLog, "verboseLog", false);
             Scribe_Values.Look(ref devFastSpread, "devFastSpread", false);
             Scribe_Collections.Look(ref workMult, "workMult", LookMode.Value, LookMode.Value);
             if (workMult == null) workMult = new Dictionary<string, float>();
@@ -123,6 +130,7 @@ namespace DshEconomy
             Scribe_Collections.Look(ref restockPresets, "dsh_restockPresets", LookMode.Value);
             if (restockPresets == null) restockPresets = new List<string>();
             Scribe_Values.Look(ref shortageVanillaOnly, "dsh_shortageVanillaOnly", false);
+            Scribe_Values.Look(ref apparelPublicizeAt, "dsh_apparelPublicizeAt", 0.25f);
             Scribe_Collections.Look(ref shortageOnlyCats, "dsh_shortageOnlyCats", LookMode.Value);
             if (shortageOnlyCats == null) shortageOnlyCats = new List<string>();
             Scribe_Collections.Look(ref shortageOnlyDefs, "dsh_shortageOnlyDefs", LookMode.Value);
@@ -236,7 +244,7 @@ namespace DshEconomy
                 }
 
                 Messages.Message("已导出 " + saved + " 张原版工作台贴图", MessageTypeDefOf.NeutralEvent, false);
-                Log.Message("[DSH-ECONOMY] 贴图导出完成：" + saved + " 张 → " + dir);
+                DevLog.Msg("[DSH-ECONOMY] 贴图导出完成：" + saved + " 张 → " + dir);
             }
             catch (System.Exception e)
             {
@@ -414,6 +422,19 @@ namespace DshEconomy
                 "结构性短缺信只看原版物品（忽略其他 mod / 种族产物）");
             y += 30f;
 
+            // 衣服磨损到一定程度自动交回集体（0 = 关闭）
+            Widgets.Label(new Rect(view.x, y + 4f, 260f, 24f), "衣服耐久低于此比例自动公有");
+            if (Widgets.ButtonText(new Rect(view.x + 264f, y, 30f, 24f), "-"))
+                Settings.apparelPublicizeAt = Mathf.Max(0f, Settings.apparelPublicizeAt - 0.05f);
+            Widgets.Label(new Rect(view.x + 298f, y + 4f, 60f, 24f),
+                Settings.apparelPublicizeAt <= 0f ? "关闭" : (Settings.apparelPublicizeAt * 100f).ToString("F0") + "%");
+            if (Widgets.ButtonText(new Rect(view.x + 362f, y, 30f, 24f), "+"))
+                Settings.apparelPublicizeAt = Mathf.Min(1f, Settings.apparelPublicizeAt + 0.05f);
+            y += 24f;
+            Widgets.Label(new Rect(view.x + 30f, y + 2f, view.width - 40f, 22f),
+                "穿在身上的衣服掉到这个耐久以下，自动撕掉私有标签归集体，并且不再被购买（0 = 关闭）");
+            y += 28f;
+
             Widgets.Label(new Rect(view.x, y + 4f, 160f, 24f), "只提示勾选的分类：");
             float bx = view.x + 156f;
             float by = y;
@@ -455,6 +476,11 @@ namespace DshEconomy
             }
             y += 30f;
 
+            Widgets.Checkbox(new Vector2(view.x, y + 3f), ref Settings.verboseLog, 24f);
+            Widgets.Label(new Rect(view.x + 30f, y + 4f, 900f, 24f),
+                "打印诊断日志：排查问题时才勾，平时勾着会把 Player.log 刷满。");
+            y += 30f;
+
             if (Settings.debugMode && map != null && comp != null)
             {
                 List<Pawn> colonists = map.mapPawns.FreeColonists;
@@ -491,7 +517,7 @@ namespace DshEconomy
                 }
                 if (Widgets.ButtonText(new Rect(view.x + 296f, y, 140f, 26f), "打印状态"))
                 {
-                    Log.Message("[DSH-ECONOMY] 调试：国库=" + EconomyBank.ColonySilver(map)
+                    DevLog.Msg("[DSH-ECONOMY] 调试：国库=" + EconomyBank.ColonySilver(map)
                         + " 劳动=" + (EconomyLedger.TotalLabor(map.mapPawns.FreeColonists) / GenDate.TicksPerDay).ToString("0.00") + " 人日"
                         + " 个股民=" + map.mapPawns.FreeColonists.Count);
                 }
@@ -500,13 +526,13 @@ namespace DshEconomy
                 // 产地统计的调试按钮：不用真的去挖矿/种地，也能立刻看到统计生效后的价格
                 if (Widgets.ButtonText(new Rect(view.x, y, 140f, 26f), "产地统计·打印"))
                 {
-                    Log.Message("[DSH-ECONOMY] 产地统计：共 " + EconomyProductionStats.records.Count + " 条记录");
+                    DevLog.Msg("[DSH-ECONOMY] 产地统计：共 " + EconomyProductionStats.records.Count + " 条记录");
                     int shown = 0;
                     for (int i = 0; i < EconomyProductionStats.records.Count && shown < 40; i++)
                     {
                         EconomyProductionStats.Record r = EconomyProductionStats.records[i];
                         if (r == null) continue;
-                        Log.Message("[DSH-ECONOMY]   产地 " + r.defName + "：合成 " + r.recipe
+                        DevLog.Msg("[DSH-ECONOMY]   产地 " + r.defName + "：合成 " + r.recipe
                             + " / 挖掘 " + r.mine + " / 收割 " + r.harvest
                             + " / 屠宰 " + r.butcher + " / 产出 " + r.gather);
                         shown++;
@@ -558,7 +584,7 @@ namespace DshEconomy
 
                 if (Widgets.ButtonText(new Rect(view.x, y, 180f, 26f), "测试：收入对半"))
                 {
-                    Log.Message("[DSH-ECONOMY] 按钮触发：收入对半");
+                    DevLog.Msg("[DSH-ECONOMY] 按钮触发：收入对半");
                     List<Pawn> shuffled = new List<Pawn>(map.mapPawns.FreeColonists);
                     shuffled.SortBy(p => Rand.Value);
 
@@ -567,7 +593,7 @@ namespace DshEconomy
                     {
                         float days = i < half ? 8f : 1f;
                         EconomyLedger.AddLabor(shuffled[i], GenDate.TicksPerDay * days);
-                        Log.Message("[DSH-ECONOMY] 测试加劳动：" + shuffled[i].LabelShort + " +" + days + " 人日");
+                        DevLog.Msg("[DSH-ECONOMY] 测试加劳动：" + shuffled[i].LabelShort + " +" + days + " 人日");
                     }
                     int paid2 = comp.PayWagesNow();
                     Messages.Message("收入差距已制造：" + half + " 人高收入、" + (shuffled.Count - half)
@@ -601,3 +627,7 @@ namespace DshEconomy
         }
     }
 }
+
+
+
+

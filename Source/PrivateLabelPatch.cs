@@ -25,7 +25,16 @@ namespace DshEconomy
         {
             if (__instance == null || newItem == null || !newItem.Spawned) return;
 
-            Pawn owner = EconomyRealEstate.OwnerOfBuilding(__instance);
+            // 先看"这口箱子被谁私有化了"，再退回看房产归属。
+            // 只看 OwnerOfBuilding 会把"我建的箱子送给队友私有"误判成别人的箱子。
+            Pawn owner = null;
+            try
+            {
+                SlotGroup g = __instance.GetSlotGroup();
+                if (g != null) owner = EconomyPrivateStorageBehavior.OwnerOfGroup(g);
+            }
+            catch { }
+            if (owner == null) owner = EconomyRealEstate.OwnerOfBuilding(__instance);
 
             // 只读诊断：公共箱收到公共货也打一行，用来定位"公共货被弹出"
             try
@@ -38,7 +47,7 @@ namespace DshEconomy
                     if (allowed && now0 - lastPublicLog > 600)
                     {
                         lastPublicLog = now0;
-                        Log.Message("[STORCHK] 公共箱 " + __instance.LabelShort + " 收到公共货 "
+                        DevLog.Msg("[STORCHK] 公共箱 " + __instance.LabelShort + " 收到公共货 "
                             + newItem.LabelShort + " 允许=是 堆=" + newItem.stackCount);
                     }
                 }
@@ -55,7 +64,8 @@ namespace DshEconomy
             if (map == null) return;
 
             // 不能在这里直接 DeSpawn：调用方（例如 Adaptive Storage）返回后还会继续用这个 Thing
-            StorageEjectQueue.Enqueue(newItem);
+            StorageEjectQueue.Enqueue(newItem, "?????????");
         }
     }
 }
+

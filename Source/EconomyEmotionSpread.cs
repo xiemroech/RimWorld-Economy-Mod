@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -109,9 +109,10 @@ namespace DshEconomy
 
             int day = Find.TickManager != null ? Find.TickManager.TicksGame / GenDate.TicksPerDay : 0;
             lastHitDay[target] = day;
-            Log.Message("[EMOTION] " + from + "（满意度 " + EconomyLedger.GetSatisfaction(source).ToString("F0")
+            DevLog.Msg("[EMOTION] " + from + "（满意度 " + EconomyLedger.GetSatisfaction(source).ToString("F0")
                 + "）把负面情绪传给了 " + target.LabelShort + "：心情 " + MoodPenalty.ToString("F0")
                 + "，" + DurationDays + " 天");
         }
     }
 }
+

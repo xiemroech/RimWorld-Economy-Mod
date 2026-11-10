@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -43,20 +43,20 @@ namespace DshEconomy
                     ThingDef def = DefDatabase<ThingDef>.GetNamedSilentFail(defName);
                     if (def == null)
                     {
-                        Log.Message("[TEXDUMP] 找不到定义 " + defName);
+                        DevLog.Msg("[TEXDUMP] 找不到定义 " + defName);
                         continue;
                     }
                     Texture2D tex = Resolve(def);
                     if (tex == null)
                     {
-                        Log.Message("[TEXDUMP] 取不到贴图 " + defName + " path=" + (def.graphicData != null ? def.graphicData.texPath : "?")
+                        DevLog.Msg("[TEXDUMP] 取不到贴图 " + defName + " path=" + (def.graphicData != null ? def.graphicData.texPath : "?")
                             + " graphic=" + (def.graphic != null ? def.graphic.GetType().Name : "null"));
                         continue;
                     }
                     string file = Path.Combine(dir, defName + ".png");
                     if (SavePng(tex, file)) ok++;
                 }
-                Log.Message("[DSH-ECONOMY] 贴图导出完成：" + ok + " 张 → " + dir);
+                DevLog.Msg("[DSH-ECONOMY] 贴图导出完成：" + ok + " 张 → " + dir);
             }
             catch (Exception e)
             {
@@ -197,3 +197,4 @@ namespace DshEconomy
         }
     }
 }
+

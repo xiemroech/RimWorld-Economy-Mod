@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
@@ -58,11 +58,11 @@ namespace DshEconomy
                 else failed.Add(groupNames[i]);
             }
 
-            Log.Message("[DSH-ECONOMY] 私有物品防合并补丁已应用");
+            DevLog.Msg("[DSH-ECONOMY] 私有物品防合并补丁已应用");
 
             string summary = "[DSH-ECONOMY] 补丁分组：成功 " + succeeded + "/" + groupNames.Length;
             if (failed.Count > 0) summary += "，失败分组：" + string.Join("、", failed.ToArray());
-            Log.Message(summary);
+            DevLog.Msg(summary);
 
             // 至少一组生效才置位，全军覆没时下次还能重试
             if (succeeded > 0) Patched = true;
@@ -114,7 +114,7 @@ namespace DshEconomy
                     try
                     {
                         harmony.Patch(split, postfix: new HarmonyMethod(AccessTools.Method(typeof(TagPreservePatch), "SplitPostfix")));
-                        Log.Message("[DSH-ECONOMY] 拆分保留私有标签：已挂载");
+                        DevLog.Msg("[DSH-ECONOMY] 拆分保留私有标签：已挂载");
                         ok = true;
                     }
                     catch (Exception e)
@@ -145,7 +145,7 @@ namespace DshEconomy
                     try
                     {
                         harmony.Patch(labelGetter, postfix: new HarmonyMethod(AccessTools.Method(typeof(PrivateLabelPatch), "Postfix")));
-                        Log.Message("[DSH-ECONOMY] 私人物品名后标注物主：已挂载");
+                        DevLog.Msg("[DSH-ECONOMY] 私人物品名后标注物主：已挂载");
                         ok = true;
                     }
                     catch (Exception e)
@@ -158,36 +158,36 @@ namespace DshEconomy
                 if (defGraphic != null)
                 {
                     harmony.Patch(defGraphic, postfix: new HarmonyMethod(AccessTools.Method(typeof(SilverGraphicPatch), "Postfix")));
-                    Log.Message("[DSH-ECONOMY] 银锭世界贴图补丁（ThingDef）：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 银锭世界贴图补丁（ThingDef）：已挂载");
                     ok = true;
                 }
                 else
                 {
-                    Log.Warning("[DSH-ECONOMY] ThingDef.graphic 不是属性，跳过");
+                    DevLog.Msg("[DSH-ECONOMY] ThingDef.graphic 不是属性，跳过");
                 }
 
                 MethodInfo thingGraphic = AccessTools.PropertyGetter(typeof(Thing), "Graphic");
                 if (thingGraphic != null)
                 {
                     harmony.Patch(thingGraphic, postfix: new HarmonyMethod(AccessTools.Method(typeof(SilverGraphicPatch), "ThingPostfix")));
-                    Log.Message("[DSH-ECONOMY] 银锭世界贴图补丁（Thing）：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 银锭世界贴图补丁（Thing）：已挂载");
                     ok = true;
                 }
                 else
                 {
-                    Log.Warning("[DSH-ECONOMY] Thing.Graphic 不是属性，跳过");
+                    DevLog.Msg("[DSH-ECONOMY] Thing.Graphic 不是属性，跳过");
                 }
 
                 bool priceInspectPatched = false;
                 try { priceInspectPatched = EconomyPriceInspect.Patch(harmony); }
                 catch (System.Exception ex) { Log.Warning("[DSH-ECONOMY] 物品现价显示补丁失败：" + ex.Message); }
-                Log.Message("[DSH-ECONOMY] 物品信息显示现价：" + (priceInspectPatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 物品信息显示现价：" + (priceInspectPatched ? "已挂载" : "不可用"));
                 if (priceInspectPatched) ok = true;
 
                 bool priceDescPatched = false;
                 try { priceDescPatched = EconomyPriceDescription.Patch(harmony); }
                 catch (System.Exception ex) { Log.Warning("[DSH-ECONOMY] 描述栏现价补丁失败：" + ex.Message); }
-                Log.Message("[DSH-ECONOMY] 描述面板显示现价：" + (priceDescPatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 描述面板显示现价：" + (priceDescPatched ? "已挂载" : "不可用"));
                 if (priceDescPatched) ok = true;
 
                 return ok;
@@ -214,7 +214,7 @@ namespace DshEconomy
                 if (killM != null)
                 {
                     harmony.Patch(killM, postfix: new HarmonyMethod(AccessTools.Method(typeof(EconomyInheritance), "Postfix")));
-                    Log.Message("[DSH-ECONOMY] 死亡继承/充公：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 死亡继承/充公：已挂载");
                     ok = true;
                 }
 
@@ -231,14 +231,14 @@ namespace DshEconomy
                 if (dumpM != null)
                 {
                     harmony.Patch(dumpM, postfix: new HarmonyMethod(AccessTools.Method(typeof(HaulCountPatch), "DumpOnFailPostfix")));
-                    Log.Message("[DSH-ECONOMY] 搬运失败诊断（只读）：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 搬运失败诊断（只读）：已挂载");
                     ok = true;
                 }
 
                 if (haulJobM != null)
                 {
                     harmony.Patch(haulJobM, postfix: new HarmonyMethod(AccessTools.Method(typeof(HaulJobFallback), "Postfix")));
-                    Log.Message("[DSH-ECONOMY] 手动搬运换格兜底：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 手动搬运换格兜底：已挂载");
                     ok = true;
                 }
 
@@ -248,7 +248,7 @@ namespace DshEconomy
                 if (acceptM != null)
                 {
                     harmony.Patch(acceptM, postfix: new HarmonyMethod(AccessTools.Method(typeof(StorageSettingsOwnerIndex), "Postfix")));
-                    Log.Message("[DSH-ECONOMY] 私有容器只接受物主的东西（原版过滤器层切换）：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 私有容器只接受物主的东西（原版过滤器层切换）：已挂载");
                     ok = true;
                 }
 
@@ -256,7 +256,7 @@ namespace DshEconomy
                 if (curPrio != null)
                 {
                     harmony.Patch(curPrio, postfix: new HarmonyMethod(AccessTools.Method(typeof(StorePriorityGuard), "Postfix")));
-                    Log.Message("[DSH-ECONOMY] 搬运优先级下限修正（先扫到私有容器也切公共）：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 搬运优先级下限修正（先扫到私有容器也切公共）：已挂载");
                     ok = true;
                 }
 
@@ -280,7 +280,7 @@ namespace DshEconomy
                     try
                     {
                         harmony.Patch(received, postfix: new HarmonyMethod(AccessTools.Method(typeof(StorageReceivedEjectPatch), "Postfix")));
-                        Log.Message("[DSH-ECONOMY] 储物建筑收货归属检查：已挂载");
+                        DevLog.Msg("[DSH-ECONOMY] 储物建筑收货归属检查：已挂载");
                         ok = true;
                     }
                     catch (Exception e)
@@ -294,7 +294,7 @@ namespace DshEconomy
                 if (goodCell != null)
                 {
                     harmony.Patch(goodCell, prefix: new HarmonyMethod(AccessTools.Method(typeof(PrivateStorageHaulPatch), "CellPrefix")));
-                    Log.Message("[DSH-ECONOMY] 私有物存储点过滤：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 私有物存储点过滤：已挂载");
                     ok = true;
                 }
                 else
@@ -306,13 +306,13 @@ namespace DshEconomy
                 // 1.7 只有 Notify_AddedCell(IntVec3 c) / Notify_LostCell(IntVec3 c)，
                 // 语义是"格子加入/移出储物组"，不是"物品被放入"，改名修不了。
                 // 本兜底失效：物品放入的拦截依赖上方 Building_Storage.Notify_ReceivedThing。
-                Log.Message("[DSH-ECONOMY] 私有仓库兜底拦截：1.7 无 SlotGroup.Notify_Added(Thing)，本兜底已失效（改由 Notify_ReceivedThing 覆盖）");
+                DevLog.Msg("[DSH-ECONOMY] 私有仓库兜底拦截：1.7 无 SlotGroup.Notify_Added(Thing)，本兜底已失效（改由 Notify_ReceivedThing 覆盖）");
 
                 MethodInfo buildingGizmos = AccessTools.Method(typeof(ThingWithComps), "GetGizmos");
                 if (buildingGizmos != null)
                 {
                     harmony.Patch(buildingGizmos, postfix: new HarmonyMethod(AccessTools.Method(typeof(StorageOwnershipGizmoPatch), "Postfix")));
-                    Log.Message("[DSH-ECONOMY] 存储建筑所有权按钮：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 存储建筑所有权按钮：已挂载");
                     ok = true;
                 }
                 else
@@ -344,7 +344,7 @@ namespace DshEconomy
                     harmony.Patch(despawn, prefix: new HarmonyMethod(AccessTools.Method(typeof(StockIncrementalPatch), "DespawnPrefix")));
                     harmony.Patch(despawn, prefix: new HarmonyMethod(AccessTools.Method(typeof(EconomyPrivateStorageBehavior), "DespawnPrefix")));
                     harmony.Patch(despawn, prefix: new HarmonyMethod(AccessTools.Method(typeof(PublicStorageLeaveDiag), "Prefix")));
-                    Log.Message("[DSH-ECONOMY] 增量库存统计：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 增量库存统计：已挂载");
                     return true;
                 }
 
@@ -368,11 +368,11 @@ namespace DshEconomy
                 if (canHaul != null)
                 {
                     harmony.Patch(canHaul, prefix: new HarmonyMethod(AccessTools.Method(typeof(PrivateStorageHaulPatch), "Prefix")));
-                    Log.Message("[DSH-ECONOMY] 私有仓库取出限制：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 私有仓库取出限制：已挂载");
                     try
                     {
                         harmony.Patch(canHaul, prefix: new HarmonyMethod(AccessTools.Method(typeof(EconomyHaulFilter), "Prefix")));
-                        Log.Message("[DSH-ECONOMY] 搬运白名单：已挂载");
+                        DevLog.Msg("[DSH-ECONOMY] 搬运白名单：已挂载");
                     }
                     catch (System.Exception ex2) { Log.Warning("[DSH-ECONOMY] 搬运白名单失败：" + ex2.Message); }
                     return true;
@@ -402,7 +402,7 @@ namespace DshEconomy
                     try
                     {
                         harmony.Patch(willEat, prefix: new HarmonyMethod(AccessTools.Method(typeof(PrivateFoodEatBlock), "Prefix")));
-                        Log.Message("[DSH-ECONOMY] 私有食物不可被他人食用（WillEat）：已挂载");
+                        DevLog.Msg("[DSH-ECONOMY] 私有食物不可被他人食用（WillEat）：已挂载");
                         ok = true;
                     }
                     catch (Exception e)
@@ -427,7 +427,7 @@ namespace DshEconomy
                         if (findFood != null)
                         {
                             harmony.Patch(findFood, postfix: new HarmonyMethod(AccessTools.Method(typeof(PrivateFoodEatBlock), "FindFoodPostfix")));
-                            Log.Message("[DSH-ECONOMY] 别人的私有营养膏在搜索阶段就被排除：已挂载（" + findFood.GetParameters().Length + " 个参数）");
+                            DevLog.Msg("[DSH-ECONOMY] 别人的私有营养膏在搜索阶段就被排除：已挂载（" + findFood.GetParameters().Length + " 个参数）");
                         }
                         else
                         {
@@ -439,7 +439,7 @@ namespace DshEconomy
                         if (optimality != null)
                         {
                             harmony.Patch(optimality, postfix: new HarmonyMethod(AccessTools.Method(typeof(PrivateFoodEatBlock), "OptimalityPostfix")));
-                            Log.Message("[DSH-ECONOMY] 优先吃自己买的食物：已挂载");
+                            DevLog.Msg("[DSH-ECONOMY] 优先吃自己买的食物：已挂载");
                         }
                     }
                     catch (Exception e)
@@ -473,7 +473,7 @@ namespace DshEconomy
                     try
                     {
                         harmony.Patch(chairOrSpot, postfix: new HarmonyMethod(AccessTools.Method(typeof(EatAtTablePatch), "Postfix")));
-                        Log.Message("[DSH-ECONOMY] 吃饭优先找桌子（全图兜底）：已挂载");
+                        DevLog.Msg("[DSH-ECONOMY] 吃饭优先找桌子（全图兜底）：已挂载");
                         ok = true;
                     }
                     catch (Exception e)
@@ -499,10 +499,10 @@ namespace DshEconomy
                 bool workPatched = EconomyWorkTypes.Patch(harmony);
                 if (!workPatched) Log.Warning("[DSH-ECONOMY] 工作类型权重不可用，所有工作按 1.0 计");
 
-                Log.Message("[DSH-ECONOMY] 劳动计量：每 250 tick 对账（不 patch 热路径）");
+                DevLog.Msg("[DSH-ECONOMY] 劳动计量：每 250 tick 对账（不 patch 热路径）");
 
                 bool billPatched = EconomyProductionAccounting.Patch(harmony);
-                Log.Message("[DSH-ECONOMY] 工单记账（投入/产出/工资）：" + (billPatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 工单记账（投入/产出/工资）：" + (billPatched ? "已挂载" : "不可用"));
 
                 return workPatched || billPatched;
             }
@@ -533,11 +533,11 @@ namespace DshEconomy
             try
             {
                 bool buyPatched = EconomyPurchase.Patch(harmony);
-                if (buyPatched) Log.Message("[DSH-ECONOMY] 购买逻辑已启用（公共化 <50% 的消费品要付费）");
+                if (buyPatched) DevLog.Msg("[DSH-ECONOMY] 购买逻辑已启用（公共化 <50% 的消费品要付费）");
                 else Log.Warning("[DSH-ECONOMY] 购买逻辑不可用");
 
                 bool marketPatched = MarketPatch.Patch(harmony);
-                Log.Message("[DSH-ECONOMY] 市场购买结算（拿到手才扣钱）：" + (marketPatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 市场购买结算（拿到手才扣钱）：" + (marketPatched ? "已挂载" : "不可用"));
 
                 return buyPatched || marketPatched;
             }
@@ -555,19 +555,19 @@ namespace DshEconomy
                 if (carry != null)
                 {
                     harmony.Patch(carry, postfix: new HarmonyMethod(AccessTools.Method(typeof(EconomyPasteDispenser), "CarryPostfix")));
-                    Log.Message("[DSH-ECONOMY] 营养膏取餐即扣费+私有：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 营养膏取餐即扣费+私有：已挂载");
                 }
                 System.Reflection.MethodInfo ingested = AccessTools.Method(typeof(Thing), "Ingested", new[] { typeof(Pawn), typeof(float) });
                 if (ingested != null)
                 {
                     harmony.Patch(ingested, postfix: new HarmonyMethod(AccessTools.Method(typeof(EconomyPasteDispenser), "IngestedPostfix")));
-                    Log.Message("[DSH-ECONOMY] 营养膏吃下即扣费+私有：已挂载");
+                    DevLog.Msg("[DSH-ECONOMY] 营养膏吃下即扣费+私有：已挂载");
                 }
 
             try
             {
                                 bool pastePatched = EconomyPasteDispenser.Patch(harmony);
-                Log.Message("[DSH-ECONOMY] 营养膏机收费按钮：" + (pastePatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 营养膏机收费按钮：" + (pastePatched ? "已挂载" : "不可用"));
                 return pastePatched;
             }
             catch (Exception e)
@@ -583,12 +583,12 @@ namespace DshEconomy
             try
             {
                 bool cePatched = CECompat.Patch(harmony);
-                Log.Message("[DSH-ECONOMY] CE 换弹精神状态放行：" + (cePatched ? "已挂载" : "未启用"));
+                DevLog.Msg("[DSH-ECONOMY] CE 换弹精神状态放行：" + (cePatched ? "已挂载" : "未启用"));
 
                 bool augmentGatePatched = false;
                 try { augmentGatePatched = EconomyAugmentGate.Patch(harmony); }
                 catch (System.Exception ex) { Log.Warning("[DSH-ECONOMY] 植入物付费门槛补丁失败：" + ex.Message); }
-                Log.Message("[DSH-ECONOMY] 植入物付不起不能做：" + (augmentGatePatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 植入物付不起不能做：" + (augmentGatePatched ? "已挂载" : "不可用"));
 
                 return cePatched || augmentGatePatched;
             }
@@ -605,15 +605,15 @@ namespace DshEconomy
             try
             {
                 bool needInjected = SatisfactionNeedInjector.Patch(harmony);
-                Log.Message("[DSH-ECONOMY] 满意度需求（原生 Need）：" + (needInjected ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 满意度需求（原生 Need）：" + (needInjected ? "已挂载" : "不可用"));
                 bool rimHudTip = RimHudIntegration.Patch(harmony);
 
                 bool cardPatched = NeedsSatisfactionPatch.PatchCard(harmony);
-                Log.Message("[DSH-ECONOMY] 角色卡满意度行：" + (cardPatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 角色卡满意度行：" + (cardPatched ? "已挂载" : "不可用"));
 
 
                 bool inspectPatched = EconomyInspectPatch.Patch(harmony);
-                Log.Message("[DSH-ECONOMY] 信息栏满意度：" + (inspectPatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 信息栏满意度：" + (inspectPatched ? "已挂载" : "不可用"));
 
                 return needInjected || rimHudTip || cardPatched || inspectPatched;
             }
@@ -630,10 +630,10 @@ namespace DshEconomy
             try
             {
                 bool berserkPatched = EconomyBerserkTargetPatch.Patch(harmony);
-                Log.Message("[DSH-ECONOMY] 狂暴目标过滤：" + (berserkPatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 狂暴目标过滤：" + (berserkPatched ? "已挂载" : "不可用"));
 
                 bool barracksPatched = BarracksPatch.Patch(harmony);
-                Log.Message("[DSH-ECONOMY] 多人宿舍心情惩罚撤销：" + (barracksPatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 多人宿舍心情惩罚撤销：" + (barracksPatched ? "已挂载" : "不可用"));
 
                 return berserkPatched || barracksPatched;
             }
@@ -667,12 +667,12 @@ namespace DshEconomy
                 bool tradeLimitPatched = false;
                 try { tradeLimitPatched = EconomyTradeLimit.Patches.Patch(harmony); }
                 catch (System.Exception ex) { Log.Warning("[DSH-ECONOMY] 贸易限制补丁失败：" + ex.Message); }
-                Log.Message("[DSH-ECONOMY] 外部贸易限制：" + (tradeLimitPatched ? "已挂载" : "不可用"));
+                DevLog.Msg("[DSH-ECONOMY] 外部贸易限制：" + (tradeLimitPatched ? "已挂载" : "不可用"));
 
                 bool rimChatPatched = false;
                 try { rimChatPatched = EconomyRimChatTrade.Patches.Patch(harmony); }
                 catch (System.Exception ex) { Log.Warning("[DSH-ECONOMY] RimChat 预期价格补丁失败：" + ex.Message); }
-                Log.Message("[DSH-ECONOMY] RimChat 预期价格（边际计价）：" + (rimChatPatched ? "已挂载" : "未启用"));
+                DevLog.Msg("[DSH-ECONOMY] RimChat 预期价格（边际计价）：" + (rimChatPatched ? "已挂载" : "未启用"));
 
                 return tradeLimitPatched || rimChatPatched;
             }
@@ -699,10 +699,10 @@ namespace DshEconomy
                         if (req != null) harmony.Patch(req, postfix: new HarmonyMethod(AccessTools.Method(typeof(EconomyPreceptForcer), "PreceptIsRequiredPostfix")));
                         var canAdd = AccessTools.Method(typeof(Ideo), "CanAddPreceptAllFactions", new[] { typeof(PreceptDef) });
                         if (canAdd != null) harmony.Patch(canAdd, prefix: new HarmonyMethod(AccessTools.Method(typeof(EconomyPreceptForcer), "CanAddPreceptPrefix")));
-                        Log.Message("[DSH-ECONOMY] 财产制度戒律锁定（不可移除/不可换向）");
+                        DevLog.Msg("[DSH-ECONOMY] 财产制度戒律锁定（不可移除/不可换向）");
                         var rec = AccessTools.Method(typeof(Ideo), "RecachePrecepts", Type.EmptyTypes);
                         if (rec != null) harmony.Patch(rec, postfix: new HarmonyMethod(AccessTools.Method(typeof(EconomyPreceptForcer), "RecachePostfix")));
-                        Log.Message("[DSH-ECONOMY] 财产制度戒律防移除：已挂载");
+                        DevLog.Msg("[DSH-ECONOMY] 财产制度戒律防移除：已挂载");
                         ok = true;
                     }
                 }
@@ -727,7 +727,7 @@ namespace DshEconomy
                 {
                     if (EconomyMentalGuard.Patch(harmony))
                     {
-                        Log.Message("[DSH-ECONOMY] 军人精神状态免疫：已挂载");
+                        DevLog.Msg("[DSH-ECONOMY] 军人精神状态免疫：已挂载");
                         ok = true;
                     }
                     else
@@ -747,7 +747,7 @@ namespace DshEconomy
                         if (mSet != null) harmony.Patch(mSet, prefix: new HarmonyMethod(AccessTools.Method(typeof(EconomyMilitary), "SetPriorityPrefix")));
                         System.Reflection.MethodInfo mDisabled = AccessTools.Method(typeof(Pawn), "GetDisabledWorkTypes", new[] { typeof(bool) });
                         if (mDisabled != null) harmony.Patch(mDisabled, postfix: new HarmonyMethod(AccessTools.Method(typeof(EconomyMilitary), "GetDisabledWorkTypesPostfix")));
-                        Log.Message("[DSH-ECONOMY] 军人工作类型硬禁用：已挂载（GetPriority=" + (mGet != null) + " SetPriority=" + (mSet != null) + " 原版禁用表=" + (mDisabled != null) + "）");
+                        DevLog.Msg("[DSH-ECONOMY] 军人工作类型硬禁用：已挂载（GetPriority=" + (mGet != null) + " SetPriority=" + (mSet != null) + " 原版禁用表=" + (mDisabled != null) + "）");
                         ok = true;
                     }
                 }
@@ -823,3 +823,5 @@ namespace DshEconomy
         }
     }
 }
+
+

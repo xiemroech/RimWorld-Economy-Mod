@@ -8,6 +8,8 @@ namespace DshEconomy
     /// <summary>给存储建筑（货架/冰箱/储物箱）加「所有权」按钮，规则与私人堆放区一致。</summary>
     public static class StorageOwnershipGizmoPatch
     {
+        private static bool reportedIcon;
+
         public static void Postfix(ThingWithComps __instance, ref IEnumerable<Gizmo> __result)
         {
             Building_Storage storage = __instance as Building_Storage;
@@ -21,7 +23,12 @@ namespace DshEconomy
             cmd.defaultDesc = "点一下设置这个存储建筑的所有者：公共 / 某个殖民者。\n"
                 + "私有存储只收物主自己的东西，且只让物主本人搬运。";
             Texture2D icon = ContentFinder<Texture2D>.Get("UI/Issues/DshEco_Ownership", false);
-            if (icon != null) cmd.icon = icon;
+            if (icon == null && !reportedIcon)
+            {
+                reportedIcon = true;
+                Log.Warning("[DSH-ECONOMY] 贴图 UI/Issues/DshEco_Ownership 载入失败，改用占位图");
+            }
+            cmd.icon = icon != null ? icon : BaseContent.BadTex;
             cmd.action = delegate
             {
                 Building b = storage;

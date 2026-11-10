@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -206,7 +206,7 @@ namespace DshEconomy
                     string old;
                     if (lastDraftDiag.TryGetValue(dp.thingIDNumber, out old) && old == dk) continue;
                     lastDraftDiag[dp.thingIDNumber] = dk;
-                    Log.Message("[DRAFT] " + dp.LabelShort + " job=" + dj.def.defName
+                    DevLog.Msg("[DRAFT] " + dp.LabelShort + " job=" + dj.def.defName
                         + " giver=" + dg
                         + " hostile=" + (dp.playerSettings != null ? dp.playerSettings.hostilityResponse.ToString() : "?"));
                 }
@@ -228,7 +228,7 @@ namespace DshEconomy
                 bool reach = rawTarget != null && up.CanReach(rawTarget, PathEndMode.Touch, Danger.Some, true, false);
                 if (debug)
                 {
-                    Log.Message("[GRE] " + up.LabelShort
+                    DevLog.Msg("[GRE] " + up.LabelShort
                         + " state=" + (up.MentalStateDef != null ? up.MentalStateDef.defName : "null")
                         + " target=" + (rawTarget != null ? rawTarget.LabelShort : "null")
                         + " dist=" + (rawTarget != null ? up.Position.DistanceTo(rawTarget.Position).ToString("0") : "-")
@@ -271,7 +271,7 @@ namespace DshEconomy
                 if (best != null)
                 {
                     unrestTarget[up] = best;
-                    Log.Message("[DSH-ECONOMY] 锁定目标：" + up.LabelShort + " → " + best.LabelShort + "（私银 " + bestSilver + "）");
+                    DevLog.Msg("[DSH-ECONOMY] 锁定目标：" + up.LabelShort + " → " + best.LabelShort + "（私银 " + bestSilver + "）");
                 }
             }
 
@@ -305,7 +305,7 @@ namespace DshEconomy
                 {
                     fleeing.Remove(fp);
                     fp.ExitMap(false, Rot4.Random);
-                    Log.Message("[DSH-ECONOMY] 暴动：" + fp.LabelShort + " 已离开殖民地");
+                    DevLog.Msg("[DSH-ECONOMY] 暴动：" + fp.LabelShort + " 已离开殖民地");
                     continue;
                 }
 
@@ -498,7 +498,7 @@ namespace DshEconomy
 
             // 财富为 0 也可以成为目标；革命/暴动不能因为没有“富人”就无限逛街。
             unrestTarget[pawn] = richest;
-            Log.Message("[DSH-ECONOMY] " + (revolution ? "革命" : "暴动") + "：" + pawn.LabelShort
+            DevLog.Msg("[DSH-ECONOMY] " + (revolution ? "革命" : "暴动") + "：" + pawn.LabelShort
                 + " 冲向最富的 " + richest.LabelShort + "（私有财富 " + best.ToString("0") + "）");
             ApplySharedTarget(pawn, revolution ? "革命" : "暴动");
         }
@@ -590,7 +590,7 @@ namespace DshEconomy
             if (lastSharedTarget != shared)
             {
                 lastSharedTarget = shared;
-                Log.Message("[SHARED] " + label + " 围殴目标：" + shared.LabelShort);
+                DevLog.Msg("[SHARED] " + label + " 围殴目标：" + shared.LabelShort);
             }
         }
 
@@ -706,7 +706,7 @@ namespace DshEconomy
                         // 状态结束后又回到 Attack。
                         if (p.playerSettings != null)
                             p.playerSettings.hostilityResponse = HostilityResponseMode.Flee;
-                        Log.Message("[DSH-ECONOMY] " + reason + "（GiveUpExit）");
+                        DevLog.Msg("[DSH-ECONOMY] " + reason + "（GiveUpExit）");
                         return;
                     }
                 }
@@ -720,7 +720,7 @@ namespace DshEconomy
             p.mindState.mentalStateHandler.Reset();
             IntVec3 edge = CellFinder.RandomEdgeCell(p.Map);
             p.jobs.StartJob(JobMaker.MakeJob(JobDefOf.Goto, edge), JobCondition.InterruptForced);
-            Log.Message("[DSH-ECONOMY] " + reason + "（Goto 兜底）");
+            DevLog.Msg("[DSH-ECONOMY] " + reason + "（Goto 兜底）");
         }
 
 
@@ -820,7 +820,7 @@ namespace DshEconomy
                 }
                 if (!Rand.Chance(ch)) continue;
 
-                Log.Message("[SPREAD] " + source.LabelShort + " -> " + t.LabelShort
+                DevLog.Msg("[SPREAD] " + source.LabelShort + " -> " + t.LabelShort
                     + " sat=" + EconomyLedger.GetSatisfaction(t).ToString("0")
                     + " dist=" + t.Position.DistanceTo(source.Position).ToString("0"));
 
@@ -830,3 +830,4 @@ namespace DshEconomy
         }
     }
 }
+

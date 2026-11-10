@@ -1,4 +1,4 @@
-using HarmonyLib;
+﻿using HarmonyLib;
 using RimWorld;
 using Verse;
 
@@ -32,10 +32,11 @@ namespace DshEconomy
                 lastTick = now;
                 if (budget-- <= 0) return;
 
-                Log.Message("[STORLEAVE] 公共货 " + __instance.LabelShort + " 离开公共箱 "
+                DevLog.Msg("[STORLEAVE] 公共货 " + __instance.LabelShort + " 离开公共箱 "
                     + b.LabelShort + "，调用栈：\n" + System.Environment.StackTrace);
             }
             catch { }
         }
     }
 }
+

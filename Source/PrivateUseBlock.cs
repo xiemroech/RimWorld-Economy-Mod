@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using HarmonyLib;
 using RimWorld;
 using Verse;
@@ -21,7 +21,7 @@ namespace DshEconomy
             {
                 harmony.Patch(wear, prefix: new HarmonyMethod(
                     typeof(PrivateUseBlock).GetMethod(nameof(ApparelPrefix), BindingFlags.Static | BindingFlags.NonPublic)));
-                Log.Message("[DSH-ECONOMY] 别人的私有衣物不能穿：已挂载");
+                DevLog.Msg("[DSH-ECONOMY] 别人的私有衣物不能穿：已挂载");
                 ok = true;
             }
             else Log.Warning("[DSH-ECONOMY] 没找到 Pawn_ApparelTracker.Wear");
@@ -32,7 +32,7 @@ namespace DshEconomy
             {
                 harmony.Patch(equip, prefix: new HarmonyMethod(
                     typeof(PrivateUseBlock).GetMethod(nameof(EquipPrefix), BindingFlags.Static | BindingFlags.NonPublic)));
-                Log.Message("[DSH-ECONOMY] 别人的私有武器不能拿：已挂载");
+                DevLog.Msg("[DSH-ECONOMY] 别人的私有武器不能拿：已挂载");
                 ok = true;
             }
             else Log.Warning("[DSH-ECONOMY] 没找到 Pawn_EquipmentTracker.AddEquipment");
@@ -46,7 +46,7 @@ namespace DshEconomy
             if (p == null || newApparel == null) return true;
             Pawn owner = EconomyPrivate.OwnerOf(newApparel);
             if (owner == null || owner == p) return true;
-            Log.Message("[USE] " + p.LabelShort + " 想穿别人的私人物品（" + newApparel.LabelShort + "，物主 "
+            DevLog.Msg("[USE] " + p.LabelShort + " 想穿别人的私人物品（" + newApparel.LabelShort + "，物主 "
                 + (owner.LabelShort ?? "?") + "），已拒绝");
             return false;
         }
@@ -57,9 +57,10 @@ namespace DshEconomy
             if (p == null || newEq == null) return true;
             Pawn owner = EconomyPrivate.OwnerOf(newEq);
             if (owner == null || owner == p) return true;
-            Log.Message("[USE] " + p.LabelShort + " 想拿别人的私人物品（" + newEq.LabelShort + "，物主 "
+            DevLog.Msg("[USE] " + p.LabelShort + " 想拿别人的私人物品（" + newEq.LabelShort + "，物主 "
                 + (owner.LabelShort ?? "?") + "），已拒绝");
             return false;
         }
     }
 }
+

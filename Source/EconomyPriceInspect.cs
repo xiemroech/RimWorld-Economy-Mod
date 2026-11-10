@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using HarmonyLib;
 using RimWorld;
 using Verse;
@@ -14,7 +14,7 @@ namespace DshEconomy
 
         public static bool Patch(Harmony harmony)
         {
-            if (harmony == null) return false;
+            if (true) return false;   // 已停用：价格改在右下角独立小窗显示
             System.Reflection.MethodInfo m = AccessTools.Method(typeof(Thing), "GetInspectString");
             if (m == null) return false;
             harmony.Patch(m, postfix: new HarmonyMethod(AccessTools.Method(typeof(EconomyPriceInspect), "Postfix")));
@@ -82,3 +82,4 @@ namespace DshEconomy
         }
     }
 }
+

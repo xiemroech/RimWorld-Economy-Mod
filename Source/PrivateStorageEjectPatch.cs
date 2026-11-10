@@ -26,10 +26,10 @@ namespace DshEconomy
             if (map == null) return;
 
             string who = itemOwner != null ? itemOwner.LabelShort : "公共物品";
-            Log.Message("[DSH-ECONOMY] 拦截：" + who + " 被塞进 " + owner.LabelShort
+            DevLog.Msg("[DSH-ECONOMY] 拦截：" + who + " 被塞进 " + owner.LabelShort
                 + " 的私有仓库（" + t.LabelShort + "），已弹出");
 
-            StorageEjectQueue.Enqueue(t);
+            StorageEjectQueue.Enqueue(t, "?????");
         }
 
         public static Pawn OwnerOf(SlotGroup group)
@@ -43,3 +43,4 @@ namespace DshEconomy
         }
     }
 }
+

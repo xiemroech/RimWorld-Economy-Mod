@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text;
 using RimWorld;
 using Verse;
@@ -47,7 +47,7 @@ namespace DshEconomy
                 }
             }
 
-            Log.Message("[DSH-SELF] 地图 " + map.uniqueID + "：物品 " + all.Count
+            DevLog.Msg("[DSH-SELF] 地图 " + map.uniqueID + "：物品 " + all.Count
                 + " / 带标签 " + tagged + "（私有落地 " + ground + "，私有在库 " + stored + "，空标签 " + emptyTag + "）"
                 + " / 幽灵预留 " + reservedStale
                 + " / 无角色房间 " + roomsNoRole + " " + coords
@@ -55,3 +55,4 @@ namespace DshEconomy
         }
     }
 }
+

@@ -68,7 +68,7 @@ namespace DshEconomy
                       .Append(" 收银=").Append(acceptsSilver ? "是" : "否");
                 }
             }
-            Log.Message("[DSH-ECONOMY] 存放组诊断：共 " + n + "，公共 " + pub + "（其中有空位 " + pubFree + "），私有 " + priv + sb);
+            DevLog.Msg("[DSH-ECONOMY] 存放组诊断：共 " + n + "，公共 " + pub + "（其中有空位 " + pubFree + "），私有 " + priv + sb);
         }
 
         public EconomyRealEstate(Game game)
@@ -226,7 +226,7 @@ namespace DshEconomy
                       .Append(" 收银=").Append(allowsSilver ? "是" : "否").Append(" 空位=").Append(freeGroups)
                       .Append(" 尺寸=").Append(st.def.size.x).Append("x").Append(st.def.size.z);
                 }
-                Log.Message("[DSH-ECONOMY] 储物建筑清点：共 " + n + " 个" + sb);
+                DevLog.Msg("[DSH-ECONOMY] 储物建筑清点：共 " + n + " 个" + sb);
             }
             catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 清点失败：" + e.Message); }
         }
@@ -252,7 +252,7 @@ namespace DshEconomy
                     if (cellOwner != null) { ownedCells++; if (sample == null) sample = cellOwner; }
                     if (cellOwner != declared) mismatch++;
                 }
-                Log.Message("[CELLCHK] " + st.LabelShort + " 登记=" + (declared == null ? "公共" : declared.LabelShort)
+                DevLog.Msg("[CELLCHK] " + st.LabelShort + " 登记=" + (declared == null ? "公共" : declared.LabelShort)
                     + " 格=" + cells + " 有主格=" + ownedCells + " 不一致=" + mismatch
                     + (sample != null ? " 例=" + sample.LabelShort : ""));
             }
@@ -396,7 +396,7 @@ namespace DshEconomy
                     MemoryThoughtHandler mem = previous.needs?.mood?.thoughts?.memories;
                     if (mem != null) mem.TryGainMemory(ThoughtDef.Named("DshEco_PropertyConfiscated"), null);
                     EconomySatisfactionEvents.Add(previous, "容器所有权被社会化（" + b.LabelShort + "）", -3f, 5);
-                    Log.Message("[DSH-ECONOMY] 容器社会化：" + previous.LabelShort + " 失去 " + b.LabelShort);
+                    DevLog.Msg("[DSH-ECONOMY] 容器社会化：" + previous.LabelShort + " 失去 " + b.LabelShort);
                 }
                 catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 容器社会化心情失败：" + e.Message); }
             }
@@ -610,7 +610,7 @@ namespace DshEconomy
                 if (!DiagTick.TryGetValue(key, out int last) || now - last > 600)
                 {
                     DiagTick[key] = now;
-                    Log.Message("[HAULWHY] 换格兜底 " + (found ? "成功 → " + cell : "失败 " + StoreFallback.Why)
+                    DevLog.Msg("[HAULWHY] 换格兜底 " + (found ? "成功 → " + cell : "失败 " + StoreFallback.Why)
                         + "（" + t.LabelShort + " ×" + t.stackCount + " 物主="
                         + (EconomyPrivate.OwnerOf(t) == null ? "公共" : EconomyPrivate.OwnerOf(t).LabelShort)
                         + " 搬运者=" + carrier.LabelShort + "）");
@@ -620,3 +620,4 @@ namespace DshEconomy
         }
 }
 }
+

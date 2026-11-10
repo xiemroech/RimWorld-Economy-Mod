@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using RimWorld;
 using UnityEngine;
@@ -94,8 +94,38 @@ namespace DshEconomy
         private List<Pawn> bonusSpeedPawns = new List<Pawn>();
         private List<float> bonusSpeedValues = new List<float>();
 
-        public void SetBonusSpeed(Pawn p, float value)
+        /// <summary>
+        /// 穿在身上的衣服，耐久掉到设置的比例以下时，自动撕掉私有标签、交回集体。
+        /// 0 = 关闭。只处理"还没破损到消失"的衣服，也不脱下来（照穿）。
+        /// </summary>
+        private void PublicizeWornOutApparel()
         {
+            try
+            {
+                float at = DshEconomyMod.Settings != null ? DshEconomyMod.Settings.apparelPublicizeAt : 0f;
+                if (at <= 0.001f) return;
+                List<Pawn> crew = map.mapPawns.FreeColonists;
+                for (int i = 0; i < crew.Count; i++)
+                {
+                    Pawn p = crew[i];
+                    if (p == null || p.apparel == null) continue;
+                    List<Apparel> worn = p.apparel.WornApparel;
+                    for (int j = 0; j < worn.Count; j++)
+                    {
+                        Apparel a = worn[j];
+                        if (a == null || a.Destroyed || a.MaxHitPoints <= 0) continue;
+                        if ((float)a.HitPoints / a.MaxHitPoints > at) continue;
+                        if (!EconomyPrivate.IsPrivate(a)) continue;
+                        EconomyPrivate.SetPrivate(a, null);
+                        DevLog.Msg("[APPAUTO] " + p.LabelShort + " 的 " + a.LabelShort
+                            + " 耐久 " + a.HitPoints + "/" + a.MaxHitPoints + "，已转公有");
+                    }
+                }
+            }
+            catch { }
+        }
+
+        public void SetBonusSpeed(Pawn p, float value)        {
             if (p == null) return;
             bonusSpeed[p] = value;
         }
@@ -428,8 +458,7 @@ namespace DshEconomy
 
         public override void MapComponentTick()
         {
-            if (!silverReapplied)
-            {
+            if (!silverReapplied)            {
                 silverReapplied = true;
                 EconomySilverGraphic.Apply();
             }
@@ -449,6 +478,32 @@ namespace DshEconomy
                 }
                 // 成交量：满一期（1 天）就把本期翻成上期
                 EconomyTradeVolume.Roll(now);
+
+                // 衣服磨损到阈值以下：撕掉私有标签，交回集体
+                PublicizeWornOutApparel();
+
+                // 口粮探针：开发者模式下每 250 tick 打一次"每人背包里几份食物 + 在干什么"，
+                // 用来抓"原版拿一份→被放回去→再拿"的循环。正式游玩不会输出。
+                if (Prefs.DevMode)
+                {
+                    List<Pawn> crew = map.mapPawns.FreeColonists;
+                    for (int qi = 0; qi < crew.Count; qi++)
+                    {
+                        Pawn pp = crew[qi];
+                        if (pp == null || pp.inventory == null || pp.inventory.innerContainer == null) continue;
+                        int foodN = 0;
+                        IList<Thing> pbag = pp.inventory.innerContainer;
+                        for (int bi = 0; bi < pbag.Count; bi++)
+                        {
+                            Thing it = pbag[bi];
+                            if (it != null && it.def != null && it.def.IsIngestible) foodN += it.stackCount;
+                        }
+                        DevLog.Msg("[FOODP] " + pp.LabelShort + " 背包食物=" + foodN
+                            + " 任务=" + (pp.CurJobDef == null ? "无" : pp.CurJobDef.defName)
+                            + " 饥饿=" + (pp.needs != null && pp.needs.food != null
+                                ? pp.needs.food.CurLevelPercentage.ToString("0.00") : "?"));
+                    }
+                }
                 // 结构性短缺：连续几天库存过低就汇总发一封信（内部有冷却）
                 EconomyShortageWatch.Tick(map);
             }
@@ -470,7 +525,7 @@ namespace DshEconomy
                 EconomyPocketMoney.Tick(map);
                 EconomyPrivateStorageBehavior.Tick(map);
                 StorageEjectQueue.Tick(map);
-                try { if (Find.TickManager.TicksGame % 250 == 0) EconomyPreceptForcer.EnsureOnce(map); } catch { }
+                try { if (Find.TickManager.TicksGame % 250 == 0) { EconomyPreceptForcer.EnsureOnce(map); DevLog.Refresh(); } } catch { }
                 EconomyMarket.Tick();
                 EconomyPasteDispenser.StockTick(map);
                 try { EconomyPublicSilver.Tick(map);
@@ -501,7 +556,7 @@ namespace DshEconomy
                     {
                         lastTagPrune = now;
                         int cleaned = EconomyPrivate.PruneEmptyTags(map);
-                        if (cleaned > 0) Log.Message("[DSH-ECONOMY] 组件表修复：重建 " + cleaned + " 个物品的 comps");
+                        if (cleaned > 0) DevLog.Msg("[DSH-ECONOMY] 组件表修复：重建 " + cleaned + " 个物品的 comps");
                     }
                 }
                 catch (System.Exception e) { EcoLog.WarnOnce("tagprune", e); }
@@ -716,7 +771,7 @@ namespace DshEconomy
                     arrearsEnabled = false;
                     arrearsRemaining = 0;
                 }
-                Log.Message("[DSH-ECONOMY] 欠薪：本期不发工资。累计欠薪 " + arrearsCount
+                DevLog.Msg("[DSH-ECONOMY] 欠薪：本期不发工资。累计欠薪 " + arrearsCount
                     + " 次，剩余自动次数 " + arrearsRemaining);
             }
             else
@@ -724,7 +779,7 @@ namespace DshEconomy
                 paid = EconomyWages.PayAll(map, wages);
                 if (paid > 0) consecutiveOnTimePays = Mathf.Min(999, consecutiveOnTimePays + 1);
             }
-            if (paid > 0) Log.Message("[DSH-ECONOMY] 发薪（每 " + everyHours + " 小时）：" + paid + " 白银已发放到个人背包");
+            if (paid > 0) DevLog.Msg("[DSH-ECONOMY] 发薪（每 " + everyHours + " 小时）：" + paid + " 白银已发放到个人背包");
 
             int bonusPaid = 0;
             if (bonus != null && bonus.enabled && bonus.autoPay)
@@ -963,3 +1018,6 @@ namespace DshEconomy
         }
     }
 }
+
+
+

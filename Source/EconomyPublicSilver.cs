@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using Verse;
 using UnityEngine;
@@ -63,7 +63,7 @@ namespace DshEconomy
             if (now - lastDiag >= 2500)
             {
                 if (diagFound + diagOk + diagNoCell + diagCantQueue > 0)
-                    Log.Message("[DSH-ECONOMY] [PUB] 近一小时：发现 " + diagFound + "，派活成功 " + diagOk
+                    DevLog.Msg("[DSH-ECONOMY] [PUB] 近一小时：发现 " + diagFound + "，派活成功 " + diagOk
                                 + "，没仓位 " + diagNoCell + "，不能排队 " + diagCantQueue + "，待处理 " + dueTick.Count);
                 lastDiag = now;
                 diagFound = diagOk = diagNoCell = diagCantQueue = 0;
@@ -137,7 +137,7 @@ namespace DshEconomy
             int last;
             if (lastFoundLog.TryGetValue(p, out last) && last == day) return;
             lastFoundLog[p] = day;
-            Log.Message("[DSH-ECONOMY] [PUB] " + p.LabelShort + " 身上有公共物品 "
+            DevLog.Msg("[DSH-ECONOMY] [PUB] " + p.LabelShort + " 身上有公共物品 "
                         + t.LabelShort + " ×" + t.stackCount + "，准备入库或丢下");
         }
 
@@ -177,16 +177,18 @@ namespace DshEconomy
             }
 
             List<Thing> items = p.inventory.innerContainer.InnerListForReading;
+            bool keptFood = false;
             for (int i = 0; i < items.Count; i++)
             {
                 Thing t = items[i];
                 if (t == null || t.Destroyed) continue;
                 if (EconomyPrivate.OwnerOf(t) != null) continue; // 私有的不动
-                // 白银一律处理；食物在"不是正在吃、也不饿"时才处理（准备吃的别抢）
+                // 食物：身上留一份口粮（原版 JobGiver_PackFood 就是要留），多出来的才回收。
+                // 一份都不留会让小人反复去拿；全都不回收又会让公共食物长期堆在包里。
                 if (t.def != ThingDefOf.Silver && t.def.IsIngestible)
                 {
-                    if (p.CurJobDef == JobDefOf.Ingest) continue;
-                    if (p.needs != null && p.needs.food != null && p.needs.food.CurLevelPercentage < 0.6f) continue;
+                    if (p.CurJobDef == JobDefOf.Ingest) continue;   // 正要吃，别抢
+                    if (!keptFood) { keptFood = true; continue; }   // 第一份留下来当口粮
                 }
                 if (t.def.IsWeapon || t.def.IsApparel)
                 {
@@ -259,7 +261,7 @@ namespace DshEconomy
                 Thing droppedCarried;
                 if (p.carryTracker.TryDropCarriedThing(pos, ThingPlaceMode.Near, out droppedCarried))
                 {
-                    Log.Message("[DSH-ECONOMY] 公共物品： " + p.LabelShort + " 手上的 " + thing.LabelShort
+                    DevLog.Msg("[DSH-ECONOMY] 公共物品： " + p.LabelShort + " 手上的 " + thing.LabelShort
                                 + " ×" + thing.stackCount + " 没有公共仓位，已丢在脚下");
                 }
                 return true;
@@ -268,7 +270,7 @@ namespace DshEconomy
             Thing dropped;
             if (p.inventory.innerContainer.TryDrop(thing, pos, map, ThingPlaceMode.Near, out dropped))
             {
-                Log.Message("[DSH-ECONOMY] 公共物品： " + p.LabelShort + " 包里的 " + thing.LabelShort
+                DevLog.Msg("[DSH-ECONOMY] 公共物品： " + p.LabelShort + " 包里的 " + thing.LabelShort
                             + " ×" + thing.stackCount + " 没有公共仓位，已丢在脚下");
             }
             return true;
@@ -290,9 +292,10 @@ namespace DshEconomy
 sb.Append(" [").Append((g.parent as Thing)?.LabelShort ?? "?").Append(" 主=").Append(owner == null ? "公共" : owner.LabelShort)
                       .Append(" 收=").Append(allows ? "是" : "否").Append(" 格=").Append(g.CellsList.Count).Append("]");
                 }
-                Log.Message(sb.ToString());
+                DevLog.Msg(sb.ToString());
             }
             catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 无仓位明细失败：" + e.Message); }
         }
     }
 }
+

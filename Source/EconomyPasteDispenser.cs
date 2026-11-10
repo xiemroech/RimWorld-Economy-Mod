@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using RimWorld;
@@ -93,7 +93,7 @@ namespace DshEconomy
                         ? ingester.Map.GetComponent<MapEconomyComponent>() : null;
                     if (comp2 != null && comp2.pasteChargeEnabled)
                         Charge(ingester.Map, ingester);
-                    Log.Message("[DSH-ECONOMY] 营养膏： " + ingester.LabelShort + " 吃的是无主那份，已在入口补结算");
+                    DevLog.Msg("[DSH-ECONOMY] 营养膏： " + ingester.LabelShort + " 吃的是无主那份，已在入口补结算");
                 }
             }
             catch (System.Exception e) { EcoLog.WarnOnce("paste-ingested", e); }
@@ -129,7 +129,7 @@ namespace DshEconomy
 
                 // 一次把缺口补齐：多接几份塞进背包（都是私有，且逐份计费）
                 TryDispenseExtra(p, comp);
-                Log.Message("[DSH-ECONOMY] 营养膏取餐：" + p.LabelShort + " 取 1 份，" +
+                DevLog.Msg("[DSH-ECONOMY] 营养膏取餐：" + p.LabelShort + " 取 1 份，" +
                             (paid ? "已付费" : "免费/未收费") + "，标为私有");
             }
             catch (System.Exception e) { EcoLog.WarnOnce("paste-carry", e); }
@@ -166,7 +166,7 @@ namespace DshEconomy
                     }
                     made++;
                 }
-                if (made > 0) Log.Message("[DSH-ECONOMY] 营养膏补货：" + p.LabelShort + " 额外带了 " + made + " 份（私有）");
+                if (made > 0) DevLog.Msg("[DSH-ECONOMY] 营养膏补货：" + p.LabelShort + " 额外带了 " + made + " 份（私有）");
             }
             catch (System.Exception e) { EcoLog.WarnOnce("paste-extra", e); }
         }
@@ -233,7 +233,7 @@ namespace DshEconomy
                     if (made > 0)
                     {
                         lastStockTick[p] = now;
-                        Log.Message("[DSH-ECONOMY] 营养膏备货：" + p.LabelShort + " 买了 " + made + " 份私有营养膏（存粮 " + have.ToString("F1") + " 营养）");
+                        DevLog.Msg("[DSH-ECONOMY] 营养膏备货：" + p.LabelShort + " 买了 " + made + " 份私有营养膏（存粮 " + have.ToString("F1") + " 营养）");
                     }
                 }
             }
@@ -307,12 +307,12 @@ namespace DshEconomy
                 // 没钱也吃上了：事后记一笔「道德指责」，工作满意度 −1，可叠加
                 EconomySatisfactionEvents.Add(eater, "铁丝之力（吃不起营养膏，拿铁丝捅了投币口）", -2f, 3);
                 EconomySatisfaction.Recompute(eater);
-                Log.Message("[DSH-ECONOMY] 营养膏： " + eater.LabelShort + " 付不起（需 " + price + "，只有 " + have + "），记道德指责");
+                DevLog.Msg("[DSH-ECONOMY] 营养膏： " + eater.LabelShort + " 付不起（需 " + price + "，只有 " + have + "），记道德指责");
                 return false;
             }
 
             int paid = EconomyBank.TakePrivateSilver(map, eater, price);
-            Log.Message("[DSH-ECONOMY] 营养膏： " + eater.LabelShort + " 付了 " + paid + " 银（余额 " + (have - paid) + "）");
+            DevLog.Msg("[DSH-ECONOMY] 营养膏： " + eater.LabelShort + " 付了 " + paid + " 银（余额 " + (have - paid) + "）");
             return paid >= price;
         }
 
@@ -337,3 +337,4 @@ namespace DshEconomy
         }
     }
 }
+

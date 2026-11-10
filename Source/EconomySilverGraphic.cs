@@ -60,14 +60,14 @@ namespace DshEconomy
                     }
                 }
                 catch { }
-                Log.Message("[DSH-ECONOMY] 世界贴图检查：graphic=" + (silver.graphic != null ? silver.graphic.GetType().Name : "null")
+                DevLog.Msg("[DSH-ECONOMY] 世界贴图检查：graphic=" + (silver.graphic != null ? silver.graphic.GetType().Name : "null")
                     + " tex=" + texName);
 
                 // UI 图标是单独缓存的（uiIcon / uiIconPath），只改 graphic 不会变
                 silver.uiIcon = tex;
                 silver.uiIconPath = TexPath;
 
-                Log.Message("[DSH-ECONOMY] 银锭贴图已替换（含 UI 图标）：" + TexPath);
+                DevLog.Msg("[DSH-ECONOMY] 银锭贴图已替换（含 UI 图标）：" + TexPath);
             }
             catch (Exception e)
             {
@@ -76,3 +76,4 @@ namespace DshEconomy
         }
     }
 }
+

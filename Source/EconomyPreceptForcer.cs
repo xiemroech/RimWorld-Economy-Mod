@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using RimWorld;
@@ -95,7 +95,7 @@ namespace DshEconomy
                         Bypass = true;
                         try { ideo.RemovePrecept(pc, false); }
                         finally { Bypass = false; }
-                        Log.Message("[DOCTRINE] 移除戒律 " + other);
+                        DevLog.Msg("[DOCTRINE] 移除戒律 " + other);
                     }
                 }
 
@@ -107,7 +107,7 @@ namespace DshEconomy
                 Precept made = PreceptMaker.MakePrecept(def);
                 if (made == null) return;
                 ideo.AddPrecept(made, true, null);
-                Log.Message("[DOCTRINE] 强制启用戒律 " + want + "（文化=" + ideo.name + "）");
+                DevLog.Msg("[DOCTRINE] 强制启用戒律 " + want + "（文化=" + ideo.name + "）");
             }
             catch (Exception e)
             {
@@ -147,7 +147,7 @@ namespace DshEconomy
                     if (meme == null) continue;
                     if (!reqList.Contains(meme)) reqList.Add(meme);
                     if (assocList != null && !assocList.Contains(meme)) assocList.Add(meme);
-                    Log.Message("[DOCTRINE] 公有制 ← 模因 " + meme.defName);
+                    DevLog.Msg("[DOCTRINE] 公有制 ← 模因 " + meme.defName);
                 }
 
                 // 无扩展文化时，赤胆忠心也算公有制
@@ -158,7 +158,7 @@ namespace DshEconomy
                     {
                         if (!reqList.Contains(loyal)) reqList.Add(loyal);
                         if (assocList != null && !assocList.Contains(loyal)) assocList.Add(loyal);
-                        Log.Message("[DOCTRINE] 公有制 ← 模因 Loyalist");
+                        DevLog.Msg("[DOCTRINE] 公有制 ← 模因 Loyalist");
                     }
                 }
             }
@@ -219,3 +219,4 @@ namespace DshEconomy
         }
     }
 }
+

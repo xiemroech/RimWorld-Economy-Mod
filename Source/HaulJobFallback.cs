@@ -1,4 +1,4 @@
-using RimWorld;
+﻿using RimWorld;
 using Verse;
 using UnityEngine;
 using Verse.AI;
@@ -38,7 +38,7 @@ namespace DshEconomy
                 if (autoJob != null)
                 {
                     __result = autoJob;
-                    Log.Message("[HAULFORCE] 手动失败，自动路径成功：" + t.LabelShort
+                    DevLog.Msg("[HAULFORCE] 手动失败，自动路径成功：" + t.LabelShort
                         + " -> " + autoJob.targetB.ToStringSafe());
                     return;
                 }
@@ -84,7 +84,7 @@ namespace DshEconomy
                         {
                             ClampToContainer(containerJob, t, container);
                             __result = containerJob;
-                            Log.Message("[HAULFORCE] 手动强制公共容器："
+                            DevLog.Msg("[HAULFORCE] 手动强制公共容器："
                                 + t.LabelShort + " -> " + container.ToStringSafe());
                             return;
                         }
@@ -94,7 +94,7 @@ namespace DshEconomy
                     if (StoreFallback.TryFindPublicCellIgnoringFilter(t, p, map, out cell))
                     {
                         ok = true;
-                        Log.Message("[HAULFORCE] 过滤器无匹配，手动强制公共空格："
+                        DevLog.Msg("[HAULFORCE] 过滤器无匹配，手动强制公共空格："
                             + t.LabelShort + " -> " + cell);
                     }
                 }
@@ -105,7 +105,7 @@ namespace DshEconomy
                     {
                         string why;
                         StoreFallback.TryFindPublicCell(t, p, map, out cell, out why);
-                        Log.Message("[HAULWHY] 手动兜底失败（" + t.LabelShort + "）：" + why);
+                        DevLog.Msg("[HAULWHY] 手动兜底失败（" + t.LabelShort + "）：" + why);
                     }
                     return;
                 }
@@ -114,7 +114,7 @@ namespace DshEconomy
                 // 过滤器的“无视”不能绕过这个检查，否则任务会在原地失败，看起来就是假搬运。
                 if (!cell.IsValidStorageFor(map, t) || !p.CanReserve(cell))
                 {
-                    Log.Message("[HAULFORCE] 目标格实际不接受，已取消（" + t.LabelShort + " -> " + cell + "）");
+                    DevLog.Msg("[HAULFORCE] 目标格实际不接受，已取消（" + t.LabelShort + " -> " + cell + "）");
                     return;
                 }
 
@@ -131,3 +131,4 @@ namespace DshEconomy
         }
     }
 }
+

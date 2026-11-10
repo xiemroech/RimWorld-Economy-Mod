@@ -29,7 +29,7 @@ namespace DshEconomy
               .Append("，私有格拒收 ").Append(rejPrivateCell)
               .Append("，私有物拒收 ").Append(rejPrivateItem);
             foreach (var kv in rejSamples) sb.Append(" | ").Append(kv.Key).Append(" x").Append(kv.Value);
-            Log.Message(sb.ToString());
+            DevLog.Msg(sb.ToString());
             rejPrivateCell = rejPrivateItem = allowCount = 0;
             rejSamples.Clear();
         }
@@ -131,3 +131,4 @@ namespace DshEconomy
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using Verse;
 
@@ -22,12 +22,46 @@ namespace DshEconomy
 
         private int lastCheck;
 
+        private int lastStock = -1;
+        private int lastStockCheck;
+
         protected override void Tick()
         {
             base.Tick();
             int now = Find.TickManager.TicksGame;
+
+            // 库存变化探针：不管有没有走 Notify_ReceivedThing，只要组里的堆数变了就打一行
+            if (now - lastStockCheck >= 250)
+            {
+                lastStockCheck = now;
+                int cur = StockStacks();
+                if (cur != lastStock)
+                {
+                    DevLog.Msg("[MARKET] 库存变化 " + (lastStock < 0 ? "?" : lastStock.ToString())
+                        + " → " + cur + "（容量 " + CapacityStacks + "）");
+                    lastStock = cur;
+                }
+            }
+
             if (now - lastCheck < 2500) return;
             lastCheck = now;
+
+            // 每 2500 tick 打一次完整状态：格组、格数、堆数、优先级、能不能收简单食物
+            try
+            {
+                SlotGroup g = GetSlotGroup();
+                StorageSettings st2 = GetStoreSettings();
+                ThingDef meal = DefDatabase<ThingDef>.GetNamedSilentFail("MealSimple");
+                DevLog.Msg("[MARKET] 状态：槽组=" + (g != null ? "有" : "无")
+                    + " 格数=" + (g != null ? g.CellsList.Count : 0)
+                    + " 堆数=" + StockStacks()
+                    + " 优先级=" + (st2 != null ? st2.Priority.ToString() : "-")
+                    + " 可收简单食物=" + (st2 != null && meal != null && st2.filter != null ? st2.filter.Allows(meal).ToString() : "?"));
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[MARKET] 状态探针失败：" + e.Message);
+            }
             // 某些存储 mod 会重建过滤器，定期自检：连钢都不收就说明被清空了
             if (GetStoreSettings() != null && GetStoreSettings().filter != null
                 && !GetStoreSettings().filter.Allows(ThingDefOf.Steel))
@@ -65,7 +99,7 @@ namespace DshEconomy
                 if (!loggedFilter)
                 {
                     loggedFilter = true;
-                    Log.Message("[DSH-ECONOMY] 市场摊位过滤器：允许 " + n + " 种定义，优先级 " + s.Priority
+                    DevLog.Msg("[DSH-ECONOMY] 市场摊位过滤器：允许 " + n + " 种定义，优先级 " + s.Priority
                         + "，槽组=" + (GetSlotGroup() != null ? "有" : "无"));
                 }
             }
@@ -99,11 +133,14 @@ namespace DshEconomy
         {
             base.Notify_ReceivedThing(newItem);
             if (newItem == null) return;
+            DevLog.Msg("[MARKET] 收到：" + newItem.LabelShort + " ×" + newItem.stackCount
+                + " 现有=" + StockStacks() + "/" + CapacityStacks);
             if (StockStacks() > CapacityStacks)
             {
                 // 不能在这里直接 DeSpawn：会和在存储回调里继续用这个 Thing 的 mod 打架。
-                StorageEjectQueue.Enqueue(newItem);
+                StorageEjectQueue.Enqueue(newItem, "???????");
             }
         }
     }
 }
+

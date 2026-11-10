@@ -20,7 +20,7 @@ namespace DshEconomy
                 return;
             }
             string who = itemOwner != null ? itemOwner.LabelShort : "异常物品";
-            Log.Message("[DSH-ECONOMY] 上锁：" + who + " " + t.LabelShort + " 不该在这里，已移到旁边");
+            DevLog.Msg("[DSH-ECONOMY] 上锁：" + who + " " + t.LabelShort + " 不该在这里，已移到旁边");
             t.DeSpawn();
             GenPlace.TryPlaceThing(t, cell, map, ThingPlaceMode.Near);
         }
@@ -35,30 +35,27 @@ namespace DshEconomy
             if (map == null || map.haulDestinationManager == null) return;
             if (map.haulDestinationManager.SlotGroupAt(t.Position) == null) return;
 
-            Pawn storeOwner = PrivateStorageHaulPatch.OwnerAt(map, t.Position);
+            // 只看"这口箱子/这个堆放区归谁"，不退回看地板：
+            // 看地板会把"物主自己的箱子摆在公共/他人房间"判成公共仓，然后把他的货弹出去。
+            // 另外：刚生成时 SlotGroup 可能还没登记，此时不判定（等下一次）。
+            SlotGroup group = t.GetSlotGroup();
+            if (group == null) return;
+            Pawn storeOwner = null;
+            try { storeOwner = EconomyPrivateStorageBehavior.OwnerOfGroup(group); }
+            catch { }
             Pawn itemOwner = EconomyPrivate.OwnerOf(t);
 
-            // 私有仓库里出现了不属于物主的东西（公共物品或别人的私有物）→ 弹出
-            // 私有仓只收物主自己的私有物：无主物品、别人的物品都弹出
-            if (storeOwner == null) return;
-            if (itemOwner != storeOwner) Eject(t, itemOwner, map);
-            return;
-
-            // 公共仓库里的私有物 → 弹出
-            if (itemOwner == null) return;
-
-            IntVec3 cell;
-            if (!CellFinder.TryFindRandomCellNear(t.Position, map, 8,
-                    c => c.Standable(map) && map.haulDestinationManager.SlotGroupAt(c) == null,
-                    out cell))
+            // 私有仓只收物主自己的私有物：别人的东西、公共物品都弹出
+            if (storeOwner != null)
             {
+                if (itemOwner != storeOwner) Eject(t, itemOwner, map);
                 return;
             }
 
-            Log.Message("[DSH-ECONOMY] 上锁：私有物品 " + t.LabelShort + "（" + itemOwner.LabelShort
-                + "）被放进公共存储，已移到旁边");
-            t.DeSpawn();
-            GenPlace.TryPlaceThing(t, cell, map, ThingPlaceMode.Near);
+            // 公共仓：私有物按设计也弹出（保持原行为）
+            if (itemOwner == null) return;
+            Eject(t, itemOwner, map);
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using RimWorld;
@@ -44,7 +44,7 @@ namespace DshEconomy
             if (from < 1) Migrate_AddItemTags();
 
             version = CurrentVersion;
-            Log.Message("[DSH-ECONOMY] 存档已从 v" + from + " 适配到 v" + CurrentVersion);
+            DevLog.Msg("[DSH-ECONOMY] 存档已从 v" + from + " 适配到 v" + CurrentVersion);
         }
 
         /// <summary>
@@ -78,7 +78,7 @@ namespace DshEconomy
                         }
                     }
                 }
-                if (added > 0) Log.Message("[DSH-ECONOMY] 为 " + added + " 件旧物品补挂了归属标签");
+                if (added > 0) DevLog.Msg("[DSH-ECONOMY] 为 " + added + " 件旧物品补挂了归属标签");
             }
             catch (Exception e)
             {
@@ -192,3 +192,4 @@ namespace DshEconomy
         }
     }
 }
+

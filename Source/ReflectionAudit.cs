@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -47,7 +47,7 @@ namespace DshEconomy
                     {
                         h.Patch(targets[i], postfix: new HarmonyMethod(typeof(ReflectionAudit), nameof(Postfix)));
                         hooked++;
-                        Log.Message("[DSH-ECONOMY] 体检器挂钩成功：" + Describe(targets[i]));
+                        DevLog.Msg("[DSH-ECONOMY] 体检器挂钩成功：" + Describe(targets[i]));
                     }
                     catch (Exception e)
                     {
@@ -59,7 +59,7 @@ namespace DshEconomy
                 report.Add("=== 反射体检报告 ===");
                 report.Add("挂钩重载数：" + hooked + "    生成时间：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 report.Add("");
-                Log.Message("[DSH-ECONOMY] 反射体检器已安装，挂钩 " + hooked + " 个重载，开始记录查询");
+                DevLog.Msg("[DSH-ECONOMY] 反射体检器已安装，挂钩 " + hooked + " 个重载，开始记录查询");
             }
             catch (Exception e)
             {
@@ -111,7 +111,7 @@ namespace DshEconomy
             recording = false;
 
             string head = "共查询 " + total + " 次，找到 " + found + "，没找到 " + missing;
-            Log.Message("[DSH-ECONOMY] 体检汇总：" + head);
+            DevLog.Msg("[DSH-ECONOMY] 体检汇总：" + head);
 
             int idx = 0;
             for (int i = 0; i < report.Count; i++)
@@ -120,7 +120,7 @@ namespace DshEconomy
             }
 
             string path = WriteFile(head);
-            if (path != null) Log.Message("[DSH-ECONOMY] 体检报告已写入：" + path);
+            if (path != null) DevLog.Msg("[DSH-ECONOMY] 体检报告已写入：" + path);
         }
 
         private static string WriteFile(string head)
@@ -190,7 +190,7 @@ namespace DshEconomy
                 else
                 {
                     found++;
-                    Log.Message("[DSH-ECONOMY] 体检√ " + label);
+                    DevLog.Msg("[DSH-ECONOMY] 体检√ " + label);
                     report.Add("√ " + label);
                 }
             }
@@ -263,3 +263,4 @@ namespace DshEconomy
         }
     }
 }
+

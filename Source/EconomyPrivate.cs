@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using Verse;
 
@@ -34,6 +34,22 @@ namespace DshEconomy
         /// <summary>给物品贴私有标签；owner 传 null 即撕掉标签变回公共。</summary>
         public static void SetPrivate(Thing t, Pawn owner)
         {
+            try
+            {
+                if (t != null && t.def != null && t.def.IsIngestible && !t.Destroyed)
+                {
+                    Pawn before = null;
+                    try { before = OwnerOf(t); } catch { }
+                    if (before != owner)
+                    {
+                        DevLog.Msg("[TAG] " + (owner == null ? "撕标签" : "打标签") + "："
+                            + t.LabelShort + " ×" + t.stackCount
+                            + (owner == null ? "（原 " + (before == null ? "公共" : before.LabelShort) + "）" : " → " + owner.LabelShort));
+                    }
+                }
+            }
+            catch { }
+
             CompItemTag c = TagOf(t);
             if (c == null)
             {
@@ -56,16 +72,49 @@ namespace DshEconomy
             }
         }
 
-        /// <summary>扫一遍地图与殖民者背包，按 owner 归并所有带私有标签的物品。</summary>
+        private static Map cachedMap;
+        private static int cachedTick = -99999;
+        private static Dictionary<Pawn, List<Thing>> cachedIndex;
+
+        /// <summary>扫一遍地图、储物格与殖民者背包，按 owner 归并所有带私有标签的物品。</summary>
         public static Dictionary<Pawn, List<Thing>> BuildIndex(Map map)
         {
+            if (map == null) return new Dictionary<Pawn, List<Thing>>();
+
+            int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+            if (cachedIndex != null && cachedMap == map && now - cachedTick < 250) return cachedIndex;
+
             Dictionary<Pawn, List<Thing>> dict = new Dictionary<Pawn, List<Thing>>();
-            if (map == null) return dict;
+            HashSet<Thing> seen = new HashSet<Thing>();
 
             if (map.listerThings != null)
             {
                 List<Thing> all = map.listerThings.AllThings;
-                for (int i = 0; i < all.Count; i++) Collect(dict, all[i]);
+                for (int i = 0; i < all.Count; i++)
+                {
+                    if (all[i] == null || !seen.Add(all[i])) continue;
+                    Collect(dict, all[i]);
+                }
+            }
+
+            // 关键补充：箱子里/货架里/地窖里的东西 spawned=false，不在 listerThings 里。
+            // 只扫储物格会让"私有物品放进私有箱就消失"（财富、满意度、囤积统计全少算）。
+            if (map.haulDestinationManager != null)
+            {
+                List<SlotGroup> groups = map.haulDestinationManager.AllGroupsListForReading;
+                if (groups != null)
+                {
+                    for (int i = 0; i < groups.Count; i++)
+                    {
+                        SlotGroup g = groups[i];
+                        if (g == null || g.HeldThings == null) continue;
+                        foreach (Thing t in g.HeldThings)
+                        {
+                            if (t == null || !seen.Add(t)) continue;
+                            Collect(dict, t);
+                        }
+                    }
+                }
             }
 
             List<Pawn> colonists = map.mapPawns.FreeColonists;
@@ -76,18 +125,30 @@ namespace DshEconomy
                 if (p.inventory != null && p.inventory.innerContainer != null)
                 {
                     IList<Thing> inner = p.inventory.innerContainer;
-                    for (int j = 0; j < inner.Count; j++) Collect(dict, inner[j]);
+                    for (int j = 0; j < inner.Count; j++)
+                    {
+                        if (inner[j] == null || !seen.Add(inner[j])) continue;
+                        Collect(dict, inner[j]);
+                    }
                 }
                 if (p.apparel != null && p.apparel.WornApparel != null)
                 {
                     List<Apparel> worn = p.apparel.WornApparel;
-                    for (int j = 0; j < worn.Count; j++) Collect(dict, worn[j]);
+                    for (int j = 0; j < worn.Count; j++)
+                    {
+                        if (worn[j] == null || !seen.Add(worn[j])) continue;
+                        Collect(dict, worn[j]);
+                    }
                 }
-                if (p.equipment != null && p.equipment.Primary != null)
+                if (p.equipment != null && p.equipment.Primary != null && seen.Add(p.equipment.Primary))
                 {
                     Collect(dict, p.equipment.Primary);
                 }
             }
+
+            cachedMap = map;
+            cachedTick = now;
+            cachedIndex = dict;
             return dict;
         }
 
@@ -154,7 +215,7 @@ namespace DshEconomy
             {
                 for (int i = 0; i < Find.Maps.Count; i++) n += PruneEmptyTags(Find.Maps[i]);
             }
-            if (n > 0) Log.Message("[DSH-ECONOMY] 组件表修复：重建 " + n + " 个物品的 comps");
+            if (n > 0) DevLog.Msg("[DSH-ECONOMY] 组件表修复：重建 " + n + " 个物品的 comps");
         }
 
         public static List<Thing> PublicHeld(Pawn pawn)
@@ -263,3 +324,4 @@ namespace DshEconomy
         }
     }
 }
+

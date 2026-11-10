@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text;
 using RimWorld;
 using UnityEngine;
@@ -124,7 +124,7 @@ namespace DshEconomy
                     if (free) emptyGroups++;
                 }
             }
-            Log.Message("[HAUL] 载入扫描：地上私有物 " + n + " 件；有主存储区=" + ownedZones
+            DevLog.Msg("[HAUL] 载入扫描：地上私有物 " + n + " 件；有主存储区=" + ownedZones
                 + " 有主存储建筑=" + ownedBuildings + " 存放组=" + groups
                 + " 有主组=" + ownedGroups + " 有空位组=" + emptyGroups);
         }
@@ -178,7 +178,7 @@ namespace DshEconomy
             if (pending.Count == 0)
             {
                 if (now % 2500 == 0)
-                    Log.Message("[HAUL] 待搬=0 地上=" + grounded.Count);
+                    DevLog.Msg("[HAUL] 待搬=0 地上=" + grounded.Count);
                 return;
             }
             int day = now / GenDate.TicksPerDay;
@@ -243,6 +243,19 @@ namespace DshEconomy
                     continue;
                 }
 
+                // 食物：身上留一份，多出来的才搬回仓库（原版要求随身带口粮）
+                if (item.def != null && item.def.IsIngestible && item.ParentHolder is Pawn_InventoryTracker)
+                {
+                    int same = 0;
+                    foreach (Thing t2 in p.inventory.innerContainer)
+                        if (t2 != null && !t2.Destroyed && t2.def == item.def) same += t2.stackCount;
+                    if (same <= 1)
+                    {
+                        DevLog.Msg("[HAUL] " + p.LabelShort + " 的（" + item.LabelShort + "）只剩 1 份，留在身上");
+                        continue;
+                    }
+                }
+
                 // 背包里的东西不能直接当 HaulToCell 的目标：先丢到脚下，再搬
                 bool carried = item.ParentHolder is Pawn_InventoryTracker;
                 if (carried)
@@ -263,17 +276,17 @@ namespace DshEconomy
                 if (!FindOwnCell(p, item, out cell))
                 {
                     // 没有自己的仓库/没有空位就当天作罢；买仓库统一由消费系统负责，避免两边重复买
-                    Log.Message("[HAUL] " + p.LabelShort + " 有私有物（" + item.LabelShort
+                    DevLog.Msg("[HAUL] " + p.LabelShort + " 有私有物（" + item.LabelShort
                         + "）但自己名下没有能放的空格");
                     LogOwnDiagnostics(p, item, p.MapHeld);
                     if (diagHour)
-                        Log.Message("[HAULWHY] " + p.LabelShort + " 搬不动（" + item.LabelShort
+                        DevLog.Msg("[HAULWHY] " + p.LabelShort + " 搬不动（" + item.LabelShort
                             + " def=" + item.def.defName + "）：自己名下没有能收它的格子");
 
                     // 装备/衣服没有仓位时，先试着直接穿戴上（本来就不该进箱子）
                     if (item.ParentHolder is Pawn_InventoryTracker && TryEquipOrWear(p, item))
                     {
-                        Log.Message("[HAUL] " + p.LabelShort + " 直接把（" + item.LabelShort + "）装备上了（没有仓位）");
+                        DevLog.Msg("[HAUL] " + p.LabelShort + " 直接把（" + item.LabelShort + "）装备上了（没有仓位）");
                         continue;
                     }
 
@@ -284,7 +297,7 @@ namespace DshEconomy
                         if (p.inventory.innerContainer.TryDrop(item, p.PositionHeld, p.MapHeld,
                                 ThingPlaceMode.Near, out droppedNow) && droppedNow != null)
                         {
-                            Log.Message("[HAUL] " + p.LabelShort + " 的（" + droppedNow.LabelShort
+                            DevLog.Msg("[HAUL] " + p.LabelShort + " 的（" + droppedNow.LabelShort
                                 + "）没有可放位置，已丢在脚下 " + droppedNow.PositionHeld);
                         }
                     }
@@ -299,7 +312,7 @@ namespace DshEconomy
                 if (job.count <= 0)
                 {
                     if (diagHour)
-                        Log.Message("[HAULWHY] " + p.LabelShort + " 想搬（" + item.LabelShort
+                        DevLog.Msg("[HAULWHY] " + p.LabelShort + " 想搬（" + item.LabelShort
                             + "）但手上没有空间（carryTracker 可用 0）");
                     continue;
                 }
@@ -316,7 +329,7 @@ namespace DshEconomy
             if (now - lastSummaryTick >= 2500)
             {
                 lastSummaryTick = now;
-                Log.Message("[HAUL] 待搬=" + pending.Count + " 地上=" + grounded.Count
+                DevLog.Msg("[HAUL] 待搬=" + pending.Count + " 地上=" + grounded.Count
                     + " 忙=" + busy + " 无空格=" + noCell + " 派活=" + issued);
             }
         }
@@ -567,11 +580,11 @@ namespace DshEconomy
                 }
 
                 Pawn owner = OwnerOfGroup(g);
-                Log.Message("[GROUPS] #" + i + " " + kind + " " + name
+                DevLog.Msg("[GROUPS] #" + i + " " + kind + " " + name
                     + " 格=" + total + " 空=" + empty
                     + " 主=" + (owner != null ? owner.LabelShort : "公共"));
             }
-            Log.Message("[GROUPS] 共 " + i + " 个存放组");
+            DevLog.Msg("[GROUPS] 共 " + i + " 个存放组");
         }
 
 
@@ -682,9 +695,9 @@ namespace DshEconomy
                 }
 
                 Pawn holder = groupOwner;
-                Log.Message("[HAUL] 异常放置：" + t.LabelShort + "（物主 " + owner.LabelShort
+                DevLog.Msg("[HAUL] 异常放置：" + t.LabelShort + "（物主 " + owner.LabelShort
                     + "）在" + (holder == null ? "公共" : holder.LabelShort) + "存储里，准备弹出");
-                StorageEjectQueue.Enqueue(t);
+                StorageEjectQueue.Enqueue(t, "??????");
             }
         }
 
@@ -740,7 +753,7 @@ namespace DshEconomy
                       .Append(g.CellsList != null ? g.CellsList.Count : 0).Append("]");
             }
 
-            Log.Message("[HAUL] 明细：" + p.LabelShort + " 物品=" + item.LabelShort
+            DevLog.Msg("[HAUL] 明细：" + p.LabelShort + " 物品=" + item.LabelShort
                 + " 判断额=" + EconomyPrice.UnitPrice(item, map).ToString("F1")
                 + " 名下组=" + owned + " 能收=" + allowed + " 总空格=" + free + sb);
         }
@@ -773,8 +786,14 @@ namespace DshEconomy
                         foreach (Thing it in inner) { if (it != null) { sampleDef = it.def; break; } }
                     }
                     catch { }
-                    used += cnt;
-                    capacity += cnt + Mathf.Max(1, ContainerUtil.CanAcceptCount(inner, sampleDef));
+                    // 单位必须统一：这里一律按「堆」算。
+                    // 旧写法 used 数的是堆、capacity 加的是 CanAcceptCount 的「件」，
+                    // 两者不同单位，才会出现 0/15000 这种假数字。
+                    used += inner.Count;
+                    Building bb = g.parent as Building;
+                    int pc = (bb != null && bb.def != null && bb.def.building != null)
+                        ? Mathf.Max(1, bb.def.building.maxItemsInCell) : 1;
+                    capacity += Mathf.Max(1, g.CellsList.Count) * pc;
                     continue;
                 }
 
@@ -803,6 +822,14 @@ namespace DshEconomy
                 }
 
                 capacity += g.CellsList.Count * Mathf.Max(perCell, observedMax);
+                if (capacity > 2000)
+                {
+                    Thing pg = g.parent as Thing;
+                    string name = pg != null ? pg.LabelShort : (g.parent != null ? g.parent.GetType().Name : "?");
+                    DevLog.Msg("[BOX] 容量异常：" + name
+                        + " 格=" + g.CellsList.Count + " 每格=" + perCell + " 实测最多=" + observedMax
+                        + " 累计容量=" + capacity);
+                }
             }
 
             if (capacity <= 0) return -1f;
@@ -857,3 +884,4 @@ namespace DshEconomy
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using HarmonyLib;
 using RimWorld;
 using Verse;
@@ -469,14 +469,14 @@ namespace DshEconomy
                             }
                         }
                         catch (System.Exception ex) { EcoLog.WarnOnce("EconomyTradeLimit", ex); }
-                        Log.Message("[TRADE] 商人=" + tr.TraderKind?.defName + " 货物=" + goods
+                        DevLog.Msg("[TRADE] 商人=" + tr.TraderKind?.defName + " 货物=" + goods
                             + " 愿意收购=" + willing + " 白银=" + TraderSilver()
                             + " 地图物品=" + mapThings + " 其中可堆物品=" + haulable
                             + " 样本=[" + sample + "]");
                     }
                 }
                 catch (System.Exception ex) { EcoLog.WarnOnce("EconomyTradeLimit", ex); }
-                Log.Message("[DSH-ECONOMY] 贸易限制：本次访问开始（" + (t == null ? "未知商人" : (t.TraderKind != null ? t.TraderKind.LabelCap.ToString() : "商人")) + "）");
+                DevLog.Msg("[DSH-ECONOMY] 贸易限制：本次访问开始（" + (t == null ? "未知商人" : (t.TraderKind != null ? t.TraderKind.LabelCap.ToString() : "商人")) + "）");
             }
 
             private static void DialogContentsPostfix(UnityEngine.Rect inRect)
@@ -489,7 +489,7 @@ namespace DshEconomy
                     if (!drewOnce)
                     {
                         drewOnce = true;
-                        Log.Message("[DSH-ECONOMY] 贸易倍率悬浮窗（窗口内）：已绘制");
+                        DevLog.Msg("[DSH-ECONOMY] 贸易倍率悬浮窗（窗口内）：已绘制");
                     }
                 }
                 catch (System.Exception ex) { Log.WarningOnce("[DSH-ECONOMY] 贸易倍率悬浮窗（窗口内）绘制失败：" + ex.Message, 0x5D5E2); }
@@ -552,3 +552,4 @@ namespace DshEconomy
         }
     }
 }
+

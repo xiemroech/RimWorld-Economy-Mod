@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -291,7 +291,7 @@ namespace DshEconomy
             if (now - lastStatTick < 2500) return;
             lastStatTick = now;
             if (StatTry == 0 && StatBroke == 0 && StatNoSpace == 0 && StatJob == 0 && StatNoStock == 0) return;
-            Log.Message("[CONSUME] 近一小时：找到货 " + StatTry + " 次，没找到货 " + StatNoStock
+            DevLog.Msg("[CONSUME] 近一小时：找到货 " + StatTry + " 次，没找到货 " + StatNoStock
                         + "，缺钱 " + StatBroke + "，没地方 " + StatNoSpace + "，实际派活 " + StatJob);
             StatTry = StatBroke = StatNoSpace = StatJob = StatNoStock = 0;
             DecayUnmet();
@@ -1028,7 +1028,7 @@ namespace DshEconomy
 
             EconomyRealEstate.SetBuildingOwner(pick, p);
             comp.consumptionBought++;
-            Log.Message("[CONSUME] " + p.LabelShort + " 买下容器 " + pick.def.label
+            DevLog.Msg("[CONSUME] " + p.LabelShort + " 买下容器 " + pick.def.label
                 + "（" + finalCost + " 银），公共容器剩余 " + (pub.Count - 1) + "/" + total);
             return true;
         }
@@ -1386,6 +1386,10 @@ namespace DshEconomy
             {
                 if (categoryDefName == "DshEco_Apparel")
                 {
+                    // 磨到"自动公有"那条线以下的衣服不再买：又破又贵，谁穿都亏
+                    float wornAt = DshEconomyMod.Settings != null ? DshEconomyMod.Settings.apparelPublicizeAt : 0f;
+                    if (wornAt > 0.001f && t.MaxHitPoints > 0
+                        && (float)t.HitPoints / t.MaxHitPoints <= wornAt) return false;
                     if (!CanWear(p, t.def)) return false;
                     // 玩家在「方案 → 服装」里设的套装就是购买预设：不在套装里的衣服不买
                     if (!AllowedByOutfit(p, t.def)) return false;
@@ -1426,7 +1430,8 @@ namespace DshEconomy
             int n = victim.stackCount;
             victim.Destroy(DestroyMode.Vanish);
             comp.consumptionWasted += n;
-            Log.Message("[CONSUME] " + p.LabelShort + " 囤积浪费 " + n + " 件");
+            DevLog.Msg("[CONSUME] " + p.LabelShort + " 囤积浪费 " + n + " 件");
         }
     }
 }
+

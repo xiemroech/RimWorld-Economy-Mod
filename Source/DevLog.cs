@@ -1,23 +1,28 @@
+using System;
 using Verse;
 
 namespace DshEconomy
 {
     /// <summary>
-    /// 只在开发者模式下输出的日志。
-    /// 玩家环境（选项 → 开发者模式 未勾选）完全静默，不刷 Player.log。
-    /// 排查问题时打开开发者模式即可看回全部探针输出。
+    /// 诊断日志开关。正式游玩时 Enabled 为 false，所有调试输出静默；
+    /// 只有在设置里勾了「开发者模式」才打印，避免刷爆 Player.log。
+    /// 报错和警告一律直接走 Log.Error / Log.Warning，不经过这里。
     /// </summary>
-    internal static class DevLog
+    public static class DevLog
     {
-        public static bool On
+        public static bool Enabled = false;
+
+        /// <summary>每次启动刷新一次开关状态。</summary>
+        public static void Refresh()
         {
-            get { return Prefs.DevMode; }
+            try { Enabled = DshEconomyMod.Settings != null && DshEconomyMod.Settings.verboseLog; }
+            catch { Enabled = false; }
         }
 
         public static void Msg(string text)
         {
-            if (!Prefs.DevMode) return;
-            Log.Message(text);
+            if (!Enabled) return;
+            try { Log.Message(text); } catch { }
         }
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
@@ -768,7 +768,7 @@ namespace DshEconomy
                 float before = EconomyLedger.GetSatisfaction(p);
                 float target = Target(p, null);
                 EconomyLedger.AddSatisfaction(p, target - before);
-                Log.Message("[SAT] 重算 " + p.LabelShort + " " + before.ToString("0.0") + " → "
+                DevLog.Msg("[SAT] 重算 " + p.LabelShort + " " + before.ToString("0.0") + " → "
                     + EconomyLedger.GetSatisfaction(p).ToString("0.0") + "（当前条件目标 " + target.ToString("0.0") + "）");
             }
             EconomySatisfactionEvents.Tick();
@@ -1004,3 +1004,4 @@ namespace DshEconomy
         }
     }
 }
+

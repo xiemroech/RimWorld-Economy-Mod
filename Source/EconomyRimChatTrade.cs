@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using HarmonyLib;
 using Verse;
 
@@ -54,7 +54,7 @@ namespace DshEconomy
             if (key == lastLogKey && now - lastLogTick < 600) return;
             lastLogKey = key;
             lastLogTick = now;
-            Log.Message("[DSH-ECONOMY] RimChat 预期总价（" + dir + "）：" + before.ToString("F0") + " → " + after.ToString("F0"));
+            DevLog.Msg("[DSH-ECONOMY] RimChat 预期总价（" + dir + "）：" + before.ToString("F0") + " → " + after.ToString("F0"));
         }
 
         public static class Patches
@@ -107,3 +107,4 @@ namespace DshEconomy
         }
     }
 }
+

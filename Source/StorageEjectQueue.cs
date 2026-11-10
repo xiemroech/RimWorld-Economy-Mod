@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using Verse;
 
@@ -17,8 +17,18 @@ namespace DshEconomy
 
         public static void Enqueue(Thing t)
         {
+            Enqueue(t, "未标注");
+        }
+
+        /// <summary>带原因入队：日志里能看出是哪条规则把人东西弹出去的。</summary>
+        public static void Enqueue(Thing t, string reason)
+        {
             if (t == null) return;
-            if (!pending.Contains(t)) pending.Add(t);
+            if (!pending.Contains(t))
+            {
+                pending.Add(t);
+                DevLog.Msg("[EJECT] 入队：" + t.LabelShort + " 原因=" + reason);
+            }
         }
 
         public static void Clear()
@@ -55,16 +65,16 @@ namespace DshEconomy
                 }
                 else
                 {
-                    storeOwner = PrivateStorageHaulPatch.OwnerAt(map, t.Position);
-                    if (itemOwner == storeOwner) continue;    // 公共存放组，但格子属于物主，正常
+                    // 箱子没有主人 = 公共存储。公共存储里的私有物按设计要弹出来，
+                    // 但只在"箱子确实有主人身份"之外的情况下才算公共，
+                    // 所以这里不再退回看地板（看地板会把物主自己的箱子判成公共）。
+                    storeOwner = null;
                 }
-
-                // storeOwner == null 就是公共存储，这里必须也弹出
 
 
                 budget--;
                 IntVec3 cell = t.PositionHeld;
-                Log.Message("[DSH-ECONOMY] 上锁：" + t.LabelShort + "（"
+                DevLog.Msg("[DSH-ECONOMY] 上锁：" + t.LabelShort + "（"
                     + itemOwner.LabelShort + "）不该在 "
                     + (storeOwner != null ? storeOwner.LabelShort : "公共") + "存储里，已移到旁边");
 
@@ -74,3 +84,4 @@ namespace DshEconomy
         }
     }
 }
+

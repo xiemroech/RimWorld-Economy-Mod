@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -27,7 +27,7 @@ namespace DshEconomy
                 int cells = 0;
                 try { cells = storage.AllSlotCellsList().Count; } catch { }
                 int per = (storage.def != null && storage.def.building != null) ? storage.def.building.maxItemsInCell : 1;
-                Log.Message("[RESTOCK] " + storage.LabelShort + " 格=" + cells + " 每格=" + per
+                DevLog.Msg("[RESTOCK] " + storage.LabelShort + " 格=" + cells + " 每格=" + per
                     + " 栏=" + RestockStore.TotalSlots(storage)
                     + " 白银每组=" + ThingDefOf.Silver.stackLimit);
             }
@@ -120,6 +120,13 @@ namespace DshEconomy
                 Messages.Message("已保存补货预设：" + presetName, MessageTypeDefOf.TaskCompletion, false);
             }
             if (Widgets.ButtonText(b4, "关闭")) Close();
+
+            Rect b5 = new Rect(b4.x - 76f, by, 70f, 28f);
+            if (Widgets.ButtonText(b5, "诊断"))
+            {
+                EconomyRestock.Diagnose(storage != null ? storage.Map : Find.CurrentMap, storage);
+                Messages.Message("补货诊断已写入日志（搜 [RESTOCK]）", MessageTypeDefOf.TaskCompletion, false);
+            }
 
             // 预设行（单独一行；宽度扣掉右下角「关闭」，永不重叠）
             Rect pr = new Rect(inRect.x, by - 34f, inRect.width - 80f, 28f);
@@ -367,7 +374,7 @@ namespace DshEconomy
                     if (d == null || !d.PlayerAcquirable || d.category != ThingCategory.Item) continue;
                     cachedDefs.Add(d);
                 }
-                Log.Message("[RESTOCK] " + storage.LabelShort + " 读不到过滤器允许项（0 种），已退回全部物品列表：" + cachedDefs.Count + " 种");
+                DevLog.Msg("[RESTOCK] " + storage.LabelShort + " 读不到过滤器允许项（0 种），已退回全部物品列表：" + cachedDefs.Count + " 种");
             }
 
             cachedDefs.Sort((a, b) => string.Compare(a?.label ?? a?.defName ?? "", b?.label ?? b?.defName ?? "", System.StringComparison.Ordinal));
@@ -524,3 +531,4 @@ namespace DshEconomy
         }
     }
 }
+

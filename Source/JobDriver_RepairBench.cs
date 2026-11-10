@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using RimWorld;
 using Verse;
@@ -88,13 +88,13 @@ namespace DshEconomy
                 {
                     MoteMaker.ThrowText((actor.DrawPos + Building.DrawPos) / 2f, actor.Map,
                         "TextMote_FixBrokenDownBuildingFail".Translate(), 3.65f);
-                    Log.Message("[DEPRECIATION] 维修失败（成功率判定）：" + Building.LabelShort + "，消耗 " + costLog);
+                    DevLog.Msg("[DEPRECIATION] 维修失败（成功率判定）：" + Building.LabelShort + "，消耗 " + costLog);
                 }
                 else
                 {
                     Building.GetComp<CompBreakdownable>().Notify_Repaired();
                     actor.records?.Increment(RecordDefOf.ThingsRepaired);
-                    Log.Message("[DEPRECIATION] 修好 " + Building.LabelShort + "（" + Building.def.defName
+                    DevLog.Msg("[DEPRECIATION] 修好 " + Building.LabelShort + "（" + Building.def.defName
                         + "）消耗 " + costLog);
                 }
                 actor.jobs.EndCurrentJob(JobCondition.Succeeded);
@@ -178,3 +178,4 @@ namespace DshEconomy
         }
     }
 }
+

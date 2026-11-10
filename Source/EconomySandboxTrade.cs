@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using RimWorld;
 using Verse;
 
@@ -13,7 +13,7 @@ namespace DshEconomy
             IncidentDef def = IncidentDefOf.TraderCaravanArrival;
             IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
             bool ok = def.Worker.TryExecute(parms);
-            Log.Message("[SANDBOX] 召唤商队：" + (ok ? "已派出" : "失败"));
+            DevLog.Msg("[SANDBOX] 召唤商队：" + (ok ? "已派出" : "失败"));
             return ok ? "商队已出发，稍等片刻到图边缘" : "召唤失败（可能没有可用的友好派系）";
         }
 
@@ -28,7 +28,7 @@ namespace DshEconomy
             TradeShip ship = map.passingShipManager?.passingShips?.OfType<TradeShip>().FirstOrDefault();
             if (ship == null)
             {
-                Log.Message("[SANDBOX] 轨道商船：已呼叫但没找到船对象");
+                DevLog.Msg("[SANDBOX] 轨道商船：已呼叫但没找到船对象");
                 return "船已在轨道上，点开信件里的「交易」即可";
             }
             return OpenTrade(map, ship);
@@ -59,7 +59,7 @@ namespace DshEconomy
             silver.stackCount = UnityEngine.Mathf.Max(1, amount);
             bool added = p.inventory.innerContainer.TryAdd(silver);
             if (!added) return "塞白银失败：商人背包放不下";
-            Log.Message("[SANDBOX] 给商人 " + p.LabelShort + " 塞了 " + amount + " 白银");
+            DevLog.Msg("[SANDBOX] 给商人 " + p.LabelShort + " 塞了 " + amount + " 白银");
             return "已给 " + p.LabelShort + " 塞了 " + amount + " 白银，重新打开交易窗口即可收购";
         }
 
@@ -71,8 +71,9 @@ namespace DshEconomy
                 .FirstOrDefault();
             if (negotiator == null) return "没有能说话的殖民者";
             Find.WindowStack.Add(new Dialog_Trade(negotiator, trader));
-            Log.Message("[SANDBOX] 立即贸易：谈判者=" + negotiator.LabelShort + " 商人=" + trader.TraderName);
+            DevLog.Msg("[SANDBOX] 立即贸易：谈判者=" + negotiator.LabelShort + " 商人=" + trader.TraderName);
             return "已打开与「" + (trader.TraderKind != null ? trader.TraderKind.label : trader.TraderName) + "」的交易窗口";
         }
     }
 }
+

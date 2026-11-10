@@ -16,8 +16,8 @@ namespace DshEconomy
                 typeof(MentalStateHandler), "TryStartMentalState",
                 new[]
                 {
-                    typeof(MentalStateDef), typeof(string), typeof(Pawn), typeof(bool),
-                    typeof(bool), typeof(bool), typeof(Pawn), typeof(string), typeof(bool)
+                    typeof(MentalStateDef), typeof(string), typeof(bool), typeof(bool),
+                    typeof(bool), typeof(Pawn), typeof(bool), typeof(bool), typeof(bool)
                 });
             if (m == null)
             {

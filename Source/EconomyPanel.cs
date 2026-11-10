@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -299,6 +299,25 @@ namespace DshEconomy
         }
 
         // ── 价格行情（价值 = c + v + s，价格围绕价值波动）──
+        /// <summary>????????????250 tick ??????</summary>
+        private class PawnRow
+        {
+            public List<Thing> owned;
+            public List<Thing> carried;
+            public float value;
+            public float mass;
+            public float free;
+            public int used;
+            public int cells;
+            public int silver;
+            public float wf;
+            public float desire;
+        }
+
+        private static readonly Dictionary<Pawn, PawnRow> privRows = new Dictionary<Pawn, PawnRow>();
+        private static Map privRowMap;
+        private static int privRowTick = -99999;
+
         private static List<ThingDef> marketDefs;
         private static int marketBuiltTick = -99999;
         private static string marketFilter = "";
@@ -837,7 +856,7 @@ namespace DshEconomy
         {
             List<Pawn> colonists = new List<Pawn>(map.mapPawns.FreeColonists);
             Dictionary<Pawn, List<Thing>> index = EconomyPrivate.BuildIndex(map);
-            SortColonists(colonists, map, index);
+            // 排序会逐件算 UnitPrice，每帧做一次太贵；改到下面的 250 tick 缓存块里。
 
             int zoneCount = 0;
             foreach (Zone z in map.zoneManager.AllZones)
@@ -904,24 +923,60 @@ namespace DshEconomy
             Text.Font = GameFont.Small;
             y += 26f;
 
+            // 私产页每帧重算"全图仓库容量 + 逐件市价"太贵，这里 250 tick 算一次，
+            // 期间只读缓存；否则开着窗口就一直在扫全图的 SlotGroup。
+            if (privRowMap != map || Find.TickManager.TicksGame - privRowTick > 250 || privRowTick < 0)
+            {
+                SortColonists(colonists, map, index);
+                privRows.Clear();
+                for (int ci = 0; ci < colonists.Count; ci++)
+                {
+                    Pawn cp = colonists[ci];
+                    if (cp == null) continue;
+                    PawnRow r = new PawnRow();
+                    List<Thing> o;
+                    if (!index.TryGetValue(cp, out o)) o = new List<Thing>();
+                    r.owned = o;
+                    r.carried = EconomyPrivate.CarriedPublic(cp);
+                    r.value = EconomyPrivate.Value(o, map);
+                    float mm = 0f;
+                    for (int k = 0; k < o.Count; k++)
+                    {
+                        if (o[k] == null || o[k].def == null) continue;
+                        mm += o[k].def.GetStatValueAbstract(StatDefOf.Mass) * o[k].stackCount;
+                    }
+                    r.mass = mm;
+                    r.free = EconomyPrivateStorageBehavior.FreeRatio(cp, map, out r.used, out r.cells);
+                    r.silver = EconomyBank.PrivateSilver(map, cp);
+                    r.wf = EconomyConsumption.WealthFactor(cp, map);
+                    r.desire = EconomyConsumption.DesireOf(cp, map);
+                    privRows[cp] = r;
+                }
+                privRowMap = map;
+                privRowTick = Find.TickManager.TicksGame;
+            }
+
             for (int i = 0; i < colonists.Count; i++)
             {
                 Pawn p = colonists[i];
-                List<Thing> owned;
-                if (!index.TryGetValue(p, out owned)) owned = new List<Thing>();
-                List<Thing> carried = EconomyPrivate.CarriedPublic(p);
-                float ownedValue = EconomyPrivate.Value(owned, map);
 
                 Rect row = new Rect(4f, y, viewRect.width - 8f, 28f);
                 if (i % 2 == 0) Widgets.DrawBoxSolid(row, new Color(1f, 1f, 1f, 0.03f));
 
-                float mass = 0f;
-                for (int m = 0; m < owned.Count; m++)
+                PawnRow pr;
+                if (!privRows.TryGetValue(p, out pr) || pr == null)
                 {
-                    mass += owned[m].def.GetStatValueAbstract(StatDefOf.Mass) * owned[m].stackCount;
+                    pr = new PawnRow();
+                    pr.owned = new List<Thing>();
+                    pr.carried = new List<Thing>();
                 }
-                int cells, used;
-                float free = EconomyPrivateStorageBehavior.FreeRatio(p, map, out used, out cells);
+                List<Thing> owned = pr.owned;
+                List<Thing> carried = pr.carried;
+                float ownedValue = pr.value;
+                float mass = pr.mass;
+                int cells = pr.cells;
+                int used = pr.used;
+                float free = pr.free;
                 string storeText = cells <= 0
                     ? "无仓库"
                     : "仓库 " + used + "/" + cells + "（余 " + (free * 100f).ToString("0") + "%）";
@@ -932,9 +987,9 @@ namespace DshEconomy
                 Widgets.Label(new Rect(row.x + 292f, row.y + 4f, 80f, 24f), mass.ToString("0.##") + " kg");
                 Widgets.Label(new Rect(row.x + 360f, row.y + 4f, 170f, 24f), storeText);
                 Widgets.Label(new Rect(row.x + 500f, row.y + 4f, 52f, 24f), ownedValue.ToString("0.#"));
-                float wf = EconomyConsumption.WealthFactor(p, map);
+                float wf = pr.wf;
                 Widgets.Label(new Rect(row.x + 548f, row.y + 4f, 44f, 24f), "×" + wf.ToString("0.00"));
-                float desire = EconomyConsumption.DesireOf(p, map);
+                float desire = pr.desire;
                 Color old = GUI.color;
                 GUI.color = desire >= 0.65f ? new Color(1f, 0.55f, 0.45f)
                           : (desire <= 0.2f ? new Color(0.7f, 0.85f, 1f) : Color.white);

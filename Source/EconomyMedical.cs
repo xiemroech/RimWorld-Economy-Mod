@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Reflection;
 using HarmonyLib;
 using RimWorld;
@@ -47,7 +47,7 @@ namespace DshEconomy
             int price = Mathf.Max(0, Mathf.RoundToInt(EconomyPrice.UnitPrice(medicine.def, map)));
             if (price <= 0)
             {
-                Log.Message("[MED] " + patient.LabelShort + " 用的 " + medicine.def.LabelCap
+                DevLog.Msg("[MED] " + patient.LabelShort + " 用的 " + medicine.def.LabelCap
                     + " 现价为 0（价值 " + EconomyValue.Of(medicine.def, map).ToString("0.#")
                     + " × 系数 " + EconomyPrice.CombinedFactor(medicine.def, map).ToString("0.00")
                     + " × 银价 " + EconomyPrice.SilverIndex(map).ToString("0.00")
@@ -71,7 +71,7 @@ namespace DshEconomy
                 if (paid > 0) EconomyBank.SpendColonySilver(map, paid);
             }
 
-            Log.Message("[MED] " + (doctor != null ? doctor.LabelShort : "自己") + " 给 " + patient.LabelShort
+            DevLog.Msg("[MED] " + (doctor != null ? doctor.LabelShort : "自己") + " 给 " + patient.LabelShort
                 + " 用了 " + medicine.def.LabelCap + "，按现价记 " + price + " 银（实付 " + paid + "）");
         }
 
@@ -141,7 +141,7 @@ namespace DshEconomy
                 MethodInfo postfix = AccessTools.Method(typeof(MedicalTendPatch), "Postfix");
                 harmony.Patch(tend, postfix: new HarmonyMethod(postfix));
                 Patched = true;
-                Log.Message("[DSH-ECONOMY] 医疗收费补丁已应用");
+                DevLog.Msg("[DSH-ECONOMY] 医疗收费补丁已应用");
             }
             catch (Exception e)
             {
@@ -163,7 +163,7 @@ namespace DshEconomy
                 {
                     Map map = patient != null ? patient.MapHeld : null;
                     MapEconomyComponent c = map != null ? map.GetComponent<MapEconomyComponent>() : null;
-                    Log.Message("[MED-DIAG] tend doctor=" + (doctor != null ? doctor.LabelShort : "none")
+                    DevLog.Msg("[MED-DIAG] tend doctor=" + (doctor != null ? doctor.LabelShort : "none")
                         + " patient=" + (patient != null ? patient.LabelShort : "none")
                         + " med=" + (medicine != null ? medicine.def.defName : "none")
                         + " enabled=" + (c != null && c.medical != null ? c.medical.enabled.ToString() : "nocomp"));
@@ -175,3 +175,4 @@ namespace DshEconomy
         }
     }
 }
+

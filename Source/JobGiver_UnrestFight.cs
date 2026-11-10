@@ -1,4 +1,4 @@
-using RimWorld;
+﻿using RimWorld;
 using System.Collections.Generic;
 using UnityEngine;
 using Verse;
@@ -65,7 +65,7 @@ namespace DshEconomy
 
             if (job != null && gunUsable && job.def == JobDefOf.AttackMelee)
             {
-                Log.Message("[UF] " + pawn.LabelShort + " 有枪但原版派了近战，改走射击/靠近流程");
+                DevLog.Msg("[UF] " + pawn.LabelShort + " 有枪但原版派了近战，改走射击/靠近流程");
                 job = null;
             }
 
@@ -73,7 +73,7 @@ namespace DshEconomy
             if (job != null && gunUsable && job.def == JobDefOf.Wait_Combat
                 && !FriendlyLineClear(pawn, pawn.Position, t))
             {
-                Log.Message("[UF] " + pawn.LabelShort + " 当前位置友军挡线，寻找安全射击位");
+                DevLog.Msg("[UF] " + pawn.LabelShort + " 当前位置友军挡线，寻找安全射击位");
                 job = null;
             }
 
@@ -165,3 +165,4 @@ namespace DshEconomy
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using HarmonyLib;
 using RimWorld;
 using UnityEngine;
@@ -43,7 +43,7 @@ namespace DshEconomy
                 EconomySatisfactionEvents.Add(p, "道德指责（无力支付）", pen, 3);
                 EconomySatisfaction.Recompute(p);
 
-                Log.Message("[DSH-ECONOMY] 道德指责（无力支付）：" + p.LabelShort
+                DevLog.Msg("[DSH-ECONOMY] 道德指责（无力支付）：" + p.LabelShort
                     + " 欠 " + worthInt + " 银 → 满意度 -" + penInt + "，持续 3 天");
             }
             catch (Exception e) { Log.Warning("[DSH-ECONOMY] 未付钱结算失败：" + e.Message); }
@@ -123,13 +123,13 @@ namespace DshEconomy
                     // 买不起就一分不扣，避免把整堆银币划走
                     // 吃了/用了却没付钱（不论食物还是成瘾品）→ 按这件东西的价钱扣满意度
                     ChargeUnpaidPickup(ingester, __instance);
-                    Log.Message("[DSH-ECONOMY] 购买失败：" + ingester.LabelShort + " 想吃 "
+                    DevLog.Msg("[DSH-ECONOMY] 购买失败：" + ingester.LabelShort + " 想吃 "
                         + __instance.LabelNoCount + "，需要 " + price + "，只有 " + have);
                     return;
                 }
 
                 int paid = EconomyBank.TakePrivateSilver(map, ingester, price);
-                Log.Message("[DSH-ECONOMY] 购买：" + ingester.LabelShort + " 花 " + paid
+                DevLog.Msg("[DSH-ECONOMY] 购买：" + ingester.LabelShort + " 花 " + paid
                     + " 买了 " + __instance.LabelNoCount + "（" + cat.label + " 公共化 "
                     + comp.GetPublicization(cat).ToString("0") + "%）");
             }
@@ -140,3 +140,4 @@ namespace DshEconomy
         }
     }
 }
+

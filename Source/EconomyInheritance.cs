@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using Verse;
 
@@ -32,7 +32,7 @@ namespace DshEconomy
                     for (int i = 0; i < owned.Count; i++) EconomyPrivate.SetPrivate(owned[i], heir);
                     int saved = EconomySavings.Of(__instance);
                     if (saved > 0) { EconomySavings.Take(__instance, saved); EconomySavings.Deposit(heir, saved); }
-                    Log.Message("[DSH-ECONOMY] 继承：" + __instance.LabelShort + " 的 " + owned.Count
+                    DevLog.Msg("[DSH-ECONOMY] 继承：" + __instance.LabelShort + " 的 " + owned.Count
                         + " 件私产由 " + heir.LabelShort + " 继承");
                     Messages.Message(__instance.LabelShort + " 去世，遗产（" + owned.Count + " 件 + "
                         + saved + " 银）由 " + heir.LabelShort + " 继承。",
@@ -41,7 +41,7 @@ namespace DshEconomy
                 else
                 {
                     for (int i = 0; i < owned.Count; i++) EconomyPrivate.SetPrivate(owned[i], null);
-                    Log.Message("[DSH-ECONOMY] 充公：" + __instance.LabelShort + " 没有直系亲属，"
+                    DevLog.Msg("[DSH-ECONOMY] 充公：" + __instance.LabelShort + " 没有直系亲属，"
                         + owned.Count + " 件私产收归集体");
                     Messages.Message(__instance.LabelShort + " 没有直系亲属，"
                         + owned.Count + " 件私产（含身上装备）收归集体。",
@@ -107,3 +107,4 @@ namespace DshEconomy
         }
     }
 }
+

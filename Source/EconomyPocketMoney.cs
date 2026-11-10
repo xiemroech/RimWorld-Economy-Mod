@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -100,7 +100,7 @@ namespace DshEconomy
                 if (free != null)
                 {
                     EconomyPrivate.SetPrivate(free, null);
-                    Log.Message("[DSH-ECONOMY] 零钱超额：" + p.LabelShort + " 身上 " + carried + " 银超过上限 "
+                    DevLog.Msg("[DSH-ECONOMY] 零钱超额：" + p.LabelShort + " 身上 " + carried + " 银超过上限 "
                                 + limit + "，且私有仓库没空格，" + free.stackCount + " 银转回公共");
                 }
                 return;
@@ -144,3 +144,4 @@ namespace DshEconomy
         }
     }
 }
+

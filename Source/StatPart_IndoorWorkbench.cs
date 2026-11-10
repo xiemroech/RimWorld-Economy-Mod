@@ -1,4 +1,4 @@
-using RimWorld;
+﻿using RimWorld;
 using Verse;
 
 namespace DshEconomy
@@ -23,7 +23,7 @@ namespace DshEconomy
             if (logged.Add(b.thingIDNumber))
             {
                 Room room = b.Spawned && b.Map != null ? b.GetRoom() : null;
-                Log.Message("[DSH-ECONOMY] 屋内判定 " + b.def.defName
+                DevLog.Msg("[DSH-ECONOMY] 屋内判定 " + b.def.defName
                     + " 室内=" + indoors
                     + " 有房间=" + (room != null)
                     + " 露天工作=" + (room != null && room.OutdoorsForWork)
@@ -66,3 +66,4 @@ namespace DshEconomy
         }
     }
 }
+

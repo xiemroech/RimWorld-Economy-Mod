@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using RimWorld;
@@ -24,7 +24,7 @@ namespace DshEconomy
             if (!mounted)
             {
                 sb.Append("（没有挂上，速度不会受满意度影响）");
-                if (writeLog) Log.Message("[SPEED] " + sb.ToString().Replace("\n", " | "));
+                if (writeLog) DevLog.Msg("[SPEED] " + sb.ToString().Replace("\n", " | "));
                 return sb.ToString();
             }
 
@@ -63,7 +63,7 @@ namespace DshEconomy
                     + " 工作速度(0分)=" + v0.ToString("0.00") + " (100分)=" + v100.ToString("0.00")
                     + (cached ? "（属性本帧有缓存，差异看下一项）" : "");
                 sb.AppendLine(line + (partOk && statOk ? "  ✅" : "  ❌"));
-                if (writeLog) Log.Message("[SPEED] " + line + "  部件=" + (partOk ? "ok" : "BAD") + " 管线=" + (statOk ? "ok" : "BAD"));
+                if (writeLog) DevLog.Msg("[SPEED] " + line + "  部件=" + (partOk ? "ok" : "BAD") + " 管线=" + (statOk ? "ok" : "BAD"));
             }
 
             sb.AppendLine();
@@ -97,3 +97,4 @@ namespace DshEconomy
         }
     }
 }
+

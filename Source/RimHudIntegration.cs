@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
@@ -28,7 +28,7 @@ namespace DshEconomy
                 Type needBar = AccessTools.TypeByName("RimHUD.Interface.Hud.Models.Bars.NeedBar");
                 if (needBar == null)
                 {
-                    Log.Message("[DSH-ECONOMY] RimHUD 提示补丁：找不到 NeedBar，跳过");
+                    DevLog.Msg("[DSH-ECONOMY] RimHUD 提示补丁：找不到 NeedBar，跳过");
                     return false;
                 }
                 Type funcType = typeof(Func<string>);
@@ -41,7 +41,7 @@ namespace DshEconomy
                 }
                 harmony.Patch(ctor, prefix: new HarmonyLib.HarmonyMethod(
                     AccessTools.Method(typeof(RimHudIntegration), "NeedBarPrefix")));
-                Log.Message("[DSH-ECONOMY] RimHUD 满意度提示：已挂载");
+                DevLog.Msg("[DSH-ECONOMY] RimHUD 满意度提示：已挂载");
                 return true;
             }
             catch (Exception e)
@@ -88,14 +88,14 @@ namespace DshEconomy
                     .Any(a => a.GetName().Name == "RimHUD");
                 if (!installed)
                 {
-                    Log.Message("[DSH-ECONOMY] RimHUD 兼容：未安装 RimHUD，跳过（原版角色卡走绘制补丁）");
+                    DevLog.Msg("[DSH-ECONOMY] RimHUD 兼容：未安装 RimHUD，跳过（原版角色卡走绘制补丁）");
                     return false;
                 }
 
                 string dir = Path.Combine(GenFilePaths.ConfigFolderPath, "RimHUD");
                 if (!Directory.Exists(dir))
                 {
-                    Log.Message("[DSH-ECONOMY] RimHUD 兼容：尚未生成配置目录，跳过 " + dir);
+                    DevLog.Msg("[DSH-ECONOMY] RimHUD 兼容：尚未生成配置目录，跳过 " + dir);
                     return false;
                 }
 
@@ -106,7 +106,7 @@ namespace DshEconomy
                     if (File.Exists(file)) changed |= PatchLayout(file);
                 }
 
-                Log.Message("[DSH-ECONOMY] RimHUD 兼容：" + (changed ? "已把工作满意度写入 RimHUD 布局" : "布局已包含工作满意度"));
+                DevLog.Msg("[DSH-ECONOMY] RimHUD 兼容：" + (changed ? "已把工作满意度写入 RimHUD 布局" : "布局已包含工作满意度"));
                 return true;
             }
             catch (Exception e)
@@ -148,3 +148,4 @@ namespace DshEconomy
         }
     }
 }
+

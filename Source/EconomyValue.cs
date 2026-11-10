@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -572,7 +572,7 @@ namespace DshEconomy
                     n++;
                     if (n >= 40) break;
                 }
-                Log.Message("[DSH-ECONOMY] 作物表（前 " + n + " 条）：" + (n == 0 ? "空" : s));
+                DevLog.Msg("[DSH-ECONOMY] 作物表（前 " + n + " 条）：" + (n == 0 ? "空" : s));
             }
             catch { }
         }
@@ -1098,7 +1098,7 @@ namespace DshEconomy
             {
                 Map map = Find.CurrentMap;
                 if (map == null) map = Find.AnyPlayerHomeMap;
-                Log.Message("[FOOD] 开始诊断，当前地图=" + (map == null ? "无" : map.uniqueID.ToString()));
+                DevLog.Msg("[FOOD] 开始诊断，当前地图=" + (map == null ? "无" : map.uniqueID.ToString()));
                 if (map == null) return;
 
                 List<ThingDef> all = DefDatabase<ThingDef>.AllDefsListForReading;
@@ -1125,7 +1125,7 @@ namespace DshEconomy
                             || (plant > 0f && c <= 0f && v <= 0f);
                         if (!suspect) continue;
 
-                        Log.Message("[FOOD] " + d.defName
+                        DevLog.Msg("[FOOD] " + d.defName
                             + " 类型=" + d.ingestible.foodType
                             + " 有配方=" + (r == null ? "无" : r.defName)
                             + " 判肉=" + isMeat
@@ -1139,7 +1139,7 @@ namespace DshEconomy
                         Log.Warning("[FOOD] " + d.defName + " 抛异常：" + e.GetType().Name + " " + e.Message);
                     }
                 }
-                Log.Message("[FOOD] 结束：扫描 " + scanned + " 种可吃物品，输出 " + shown + " 条可疑项");
+                DevLog.Msg("[FOOD] 结束：扫描 " + scanned + " 种可吃物品，输出 " + shown + " 条可疑项");
             }
             catch (System.Exception e)
             {
@@ -1446,3 +1446,4 @@ namespace DshEconomy
         }
     }
 }
+

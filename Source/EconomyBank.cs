@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -139,7 +139,7 @@ namespace DshEconomy
             int taken = TakePrivateSilverCore(map, pawn, amount);
             if (taken > 0)
             {
-                Log.Message("[DSH-ECONOMY] 扣私银：" + pawn.LabelShort + " 请求 " + amount
+                DevLog.Msg("[DSH-ECONOMY] 扣私银：" + pawn.LabelShort + " 请求 " + amount
                     + " 实扣 " + taken + "，扣前 " + before + " 扣后 " + (before - taken));
             }
             return taken;
@@ -336,3 +336,4 @@ namespace DshEconomy
         }
     }
 }
+
