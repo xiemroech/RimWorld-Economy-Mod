@@ -558,6 +558,10 @@ namespace DshEconomy
                     DshEconomyDebug.CheckSilverMine();
                     Messages.Message("已打印到 Player.log（搜 [MINE]）", MessageTypeDefOf.NeutralEvent, false);
                 }
+                if (Widgets.ButtonText(new Rect(view.x + 738f, y, 140f, 26f), "劳动体检"))
+                {
+                    DshEconomyDebug.DumpLabor();
+                }
                 y += 30f;
 
                 if (Widgets.ButtonText(new Rect(view.x, y, 140f, 26f), "征收所得税"))

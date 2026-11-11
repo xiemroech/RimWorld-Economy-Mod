@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using Verse;
 using Verse.AI;
@@ -31,9 +31,31 @@ namespace DshEconomy
     {
         private const int MaxSessionTicks = 60000;
 
+        // 滚动结算步长：1 游戏小时。一段长活每小时结一次，账本/面板/工资都不会再"卡在 0"。
+        private const int RollTicks = 2500;
+
         private static readonly Dictionary<Pawn, LaborSession> open = new Dictionary<Pawn, LaborSession>();
 
         public static bool Active = true;
+
+        // 诊断计数：用来判断"记账这一层到底有没有跑"
+        public static int OpenedTotal;
+        public static int ClosedTotal;
+        public static string LastClosedInfo = "（还没有）";
+        public static string LastOpenInfo = "（还没有）";
+
+        /// <summary>这个人现在有没有一段还没结算的会话（诊断用）。</summary>
+        public static bool HasOpen(Pawn p)
+        {
+            return p != null && open.ContainsKey(p);
+        }
+
+        public static int OpenStartTick(Pawn p)
+        {
+            LaborSession s;
+            if (p == null || !open.TryGetValue(p, out s) || s == null) return -1;
+            return s.startTick;
+        }
 
         /// <summary>
         /// 这个人当前这段"还没结算"的劳动折算成多少 tick（已乘工作速度）。
@@ -81,6 +103,15 @@ namespace DshEconomy
                     open.Remove(p);
                 }
 
+                // 滚动结算：一段活干很久（比如一直蹲在银矿上）时，账本要按小时往里滚，
+                // 否则面板和工资都会一直是 0，直到这段活彻底结束。
+                if (s != null && working && now - s.startTick >= RollTicks)
+                {
+                    Close(p, s, now);
+                    s = null;
+                    open.Remove(p);
+                }
+
                 if (s == null && working)
                 {
                     Open(p, cur, now);
@@ -101,6 +132,9 @@ namespace DshEconomy
                 targetThing = job != null ? job.targetA.Thing : null
             };
             open[p] = s;
+            OpenedTotal++;
+            LastOpenInfo = p.LabelShort + " 活=" + (s.def != null ? s.def.defName : "?")
+                + " 工种=" + (s.workType != null ? s.workType.defName : "无") + " @tick " + now;
         }
 
         private static void Close(Pawn p, LaborSession s, int now)
@@ -117,6 +151,12 @@ namespace DshEconomy
             {
                 weight = DshEconomyMod.Settings.GetWorkMult(s.workType);
             }
+
+            ClosedTotal++;
+            LastClosedInfo = p.LabelShort + " 活=" + (s.def != null ? s.def.defName : "?")
+                + " 工种=" + (s.workType != null ? s.workType.defName : "无")
+                + " 时长=" + duration + "tick 原始=" + raw.ToString("0") + " 权重=" + weight.ToString("0.0")
+                + " 计入=" + (raw * weight).ToString("0");
 
             EconomyLedger.AddRawLabor(p, raw);
             EconomyLedger.AddLabor(p, raw * weight);

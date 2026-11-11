@@ -702,6 +702,38 @@ namespace DshEconomy
             DevLog.Msg("[DSH经济] 动乱运行状态已清空");
         }
 
+        /// <summary>劳动体检：打印"记账这一层到底有没有跑"，用来判断工资为 0 是不是工时没记进来。</summary>
+        [DebugAction("DSH经济", "劳动体检", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        public static void DumpLabor()
+        {
+            Map map = Find.CurrentMap;
+            if (map == null) return;
+            Log.Message("[LABOR-CK] ===== 劳动体检开始，tick=" + Find.TickManager.TicksGame + " =====");
+            Log.Message("[LABOR-CK] 会话开启累计=" + EconomyLaborSessions.OpenedTotal
+                + " 结算累计=" + EconomyLaborSessions.ClosedTotal
+                + " Active=" + EconomyLaborSessions.Active);
+            Log.Message("[LABOR-CK] 最后一次开启：" + EconomyLaborSessions.LastOpenInfo);
+            Log.Message("[LABOR-CK] 最后一次结算：" + EconomyLaborSessions.LastClosedInfo);
+            MapEconomyComponent comp = map.GetComponent<MapEconomyComponent>();
+            List<Pawn> crew = map.mapPawns.FreeColonists;
+            for (int i = 0; i < crew.Count; i++)
+            {
+                Pawn p = crew[i];
+                if (p == null) continue;
+                int start = EconomyLaborSessions.OpenStartTick(p);
+                string line = "[LABOR-CK] " + p.LabelShort
+                    + " 当前活=" + (p.CurJobDef != null ? p.CurJobDef.defName : "无")
+                    + " 算在干活=" + EconomyWages.IsWorking(p)
+                    + " 会话=" + (start >= 0 ? ("进行中 已跑 " + (Find.TickManager.TicksGame - start) + "tick") : "无")
+                    + " 账本劳动=" + EconomyLedger.GetLabor(p).ToString("0")
+                    + " 账本原始=" + EconomyLedger.GetRawLabor(p).ToString("0")
+                    + " 今日工时=" + (comp != null ? comp.DailyWorkHours(p).ToString("0.00") : "?") + "h";
+                Log.Message(line);
+            }
+            Log.Message("[LABOR-CK] ===== 结束 =====");
+            Messages.Message("劳动体检已打印到 Player.log（搜 [LABOR-CK]）", MessageTypeDefOf.NeutralEvent, false);
+        }
+
         [DebugAction("DSH经济", "导出参考贴图", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         public static void DumpTextures()
         {

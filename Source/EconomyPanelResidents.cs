@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -126,14 +126,14 @@ namespace DshEconomy
                 Widgets.Label(new Rect(120f, y + 4f, 80f, 24f), "日薪上限");
                 if (Widgets.ButtonText(new Rect(202f, y, 34f, 26f), "-" + stepMoney))
                 {
-                    w.wageCapPerDay = Mathf.Clamp(w.wageCapPerDay - stepMoney, 0f, 300f);
+                    w.wageCapPerDay = Mathf.Clamp(w.wageCapPerDay - stepMoney, 0f, 1000f);
                 }
-                w.wageCapPerDay = NumField(new Rect(240f, y, 46f, 24f), w.wageCapPerDay, 0f, 300f, "0.##");
+                w.wageCapPerDay = NumField(new Rect(240f, y, 46f, 24f), w.wageCapPerDay, 0f, 1000f, "0.##");
                 if (Widgets.ButtonText(new Rect(290f, y, 34f, 26f), "+" + stepMoney))
                 {
-                    w.wageCapPerDay = Mathf.Clamp(w.wageCapPerDay + stepMoney, 0f, 300f);
+                    w.wageCapPerDay = Mathf.Clamp(w.wageCapPerDay + stepMoney, 0f, 1000f);
                 }
-                Widgets.Label(new Rect(340f, y + 4f, 500f, 24f), "标准工时内实发工资不超过「人日 × 上限」；加班费不受此限");
+                Widgets.Label(new Rect(340f, y + 4f, 580f, 24f), "上限 = 日上限 × 这一期小时数 ÷ 24（24h ×1，12h ×0.5，168h ×7）；0 = 不限");
                 y += 34f;
 
                 Widgets.Label(new Rect(120f, y + 4f, 120f, 24f), "步长（小/中/大）");
@@ -354,12 +354,12 @@ namespace DshEconomy
             float totalRel = 0f;
             for (int i = 0; i < colonists.Count; i++)
             {
-                float lab = EconomyLedger.GetLabor(colonists[i]);
+                float lab = comp.LaborOf(colonists[i]);
                 totalLabor += lab;
                 totalProduced += w.ProducedValue(lab, colonists[i]);
-                totalWage += w.WageFor(lab, colonists[i], EconomyLedger.GetRawLabor(colonists[i]));
-                totalAbs += w.AbsoluteSurplus(lab, colonists[i], EconomyLedger.GetRawLabor(colonists[i]));
-                totalRel += w.RelativeSurplus(lab, colonists[i], EconomyLedger.GetRawLabor(colonists[i]));
+                totalWage += w.WageFor(lab, colonists[i], comp.RawLaborOf(colonists[i]));
+                totalAbs += w.AbsoluteSurplus(lab, colonists[i], comp.RawLaborOf(colonists[i]));
+                totalRel += w.RelativeSurplus(lab, colonists[i], comp.RawLaborOf(colonists[i]));
             }
             float totalSurplus = totalAbs + totalRel;
             float rate = totalWage > 0.01f ? totalSurplus / totalWage : 0f;
@@ -459,11 +459,11 @@ namespace DshEconomy
             for (int i = 0; i < colonists.Count; i++)
             {
                 Pawn p = colonists[i];
-                float lab = EconomyLedger.GetLabor(p);
+                float lab = comp.LaborOf(p);
                 int balance;
                 silverByOwner.TryGetValue(p, out balance);
                 float produced = w.ProducedValue(lab, p);
-                float wage = w.WageFor(lab, p, EconomyLedger.GetRawLabor(p));
+                float wage = w.WageFor(lab, p, comp.RawLaborOf(p));
 
                 Rect row = new Rect(4f, y, viewRect.width - 8f, 30f);
                 if (i % 2 == 0) Widgets.DrawBoxSolid(row, new Color(1f, 1f, 1f, 0.03f));

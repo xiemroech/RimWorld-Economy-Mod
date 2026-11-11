@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -761,9 +761,9 @@ namespace DshEconomy
             float totalProduced = 0f;
             for (int i = 0; i < colonists.Count; i++)
             {
-                float lab = EconomyLedger.GetLabor(colonists[i]);
+                float lab = comp.LaborOf(colonists[i]);
                 totalLabor += lab;
-                totalDue += w.WageFor(lab, colonists[i], EconomyLedger.GetRawLabor(colonists[i]));
+                totalDue += w.WageFor(lab, colonists[i], comp.RawLaborOf(colonists[i]));
                 totalProduced += w.ProducedValue(lab, colonists[i]);
             }
             float surplus = totalProduced - totalDue;
@@ -793,14 +793,14 @@ namespace DshEconomy
             {
                 Pawn p = colonists[i];
                 int balance = map != null ? EconomyBank.PrivateSilver(map, p) : 0;   // 实物私银，不用账本死数据
-                float lab = EconomyLedger.GetLabor(p);
+                float lab = comp.LaborOf(p);
 
                 Rect row = new Rect(4f, y, viewRect.width - 8f, 30f);
                 if (i % 2 == 0) Widgets.DrawBoxSolid(row, new Color(1f, 1f, 1f, 0.03f));
 
                 Widgets.Label(new Rect(row.x + 4f, row.y + 5f, 170f, 24f), p.LabelShort);
                 Widgets.Label(new Rect(row.x + 180f, row.y + 5f, 90f, 24f), (lab / GenDate.TicksPerDay).ToString("0.0"));
-                Widgets.Label(new Rect(row.x + 276f, row.y + 5f, 80f, 24f), w.WageFor(lab, colonists[i], EconomyLedger.GetRawLabor(colonists[i])).ToString("0"));
+                Widgets.Label(new Rect(row.x + 276f, row.y + 5f, 80f, 24f), w.WageFor(lab, colonists[i], comp.RawLaborOf(colonists[i])).ToString("0"));
                 Widgets.Label(new Rect(row.x + 362f, row.y + 5f, 80f, 24f), balance.ToString("N0"));
 
                 if (Widgets.ButtonText(new Rect(row.x + 450f, row.y + 3f, 70f, 24f), "结算"))

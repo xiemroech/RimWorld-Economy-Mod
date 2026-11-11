@@ -24,8 +24,8 @@ namespace DshEconomy
         // 其中分给劳动者本人的比例，0-1
         public float wageShare = 0.6f;
 
-        // 每人每天最高工资（银/真实人日）。设得比"比例工资"低时，差额变成相对剩余。
-        // 注意：按**人日**计，不是按发薪周期——168 小时周期里干了 5 个真实人日，上限就是 5 × 该值。
+        // 每人每天最高工资（银/日）。0 = 不限。
+        // 一期实发上限 = 本值 × 这一期的小时数 ÷ 24（24 小时就是本值）。
         public float wageCapPerDay = 150f;
 
         // 个人上限（旧数据，保留兼容）：名单上的人用自己的值，不在名单上的用上面的全局值。
@@ -251,8 +251,9 @@ namespace DshEconomy
             float p = Mathf.Max(0f, LaborDayValueFor(pawn));
             float s = Mathf.Clamp01(ShareFor(pawn));
 
-            float capDays = rawTicks >= 0f ? LaborDays(rawTicks) : days;
-            float cap = capDays * Mathf.Max(0f, CapFor(pawn));
+            // 上限按"这一期发多少小时"折算：24 小时 ×1，12 小时 ×0.5，168 小时 ×7。
+            // 语义是"赚多少封顶多少"，不做人日乘法：赚 300、上限 200 → 发 200，截留 100。
+            float cap = WageCapAmountFor(pawn);
 
             if (!OvertimeOnFor(pawn))
             {
@@ -266,6 +267,16 @@ namespace DshEconomy
             float baseWage = Mathf.Min(baseDays * p * s, cap);
             float otWage = otDays * p * s * Mathf.Max(1f, OvertimeMultFor(pawn));
             return baseWage + otWage;
+        }
+
+        /// <summary>这一期实际生效的工资上限（银）：日上限 × 这一期的小时数 ÷ 24；日上限为 0 时返回 float.MaxValue（不限）。</summary>
+        public float WageCapAmountFor(Pawn pawn)
+        {
+            float perDay = Mathf.Max(0f, CapFor(pawn));
+            if (perDay <= 0f) return float.MaxValue;
+            DshEconomySettings st = DshEconomyMod.Settings;
+            int everyHours = st != null ? Mathf.Clamp(st.payIntervalHours, 1, 720) : 24;
+            return perDay * (everyHours / 24f);
         }
 
         /// <summary>殖民地留存的剩余价值。</summary>
@@ -373,7 +384,11 @@ namespace DshEconomy
                 return PaySoldierFixed(pawn, map, mcomp);
             }
 
-            float labor = EconomyLedger.GetLabor(pawn);
+            MapEconomyComponent mcomp0 = map.GetComponent<MapEconomyComponent>();
+            // 工资口径 = 界面上那份工时表（按工种加权），不再单独读账本：
+            // 以前两套数并存，界面上有、发薪却是 0，读档后更容易对不上。
+            float labor = mcomp0 != null ? mcomp0.LaborOf(pawn) : EconomyLedger.GetLabor(pawn);
+            float rawLabor = mcomp0 != null ? mcomp0.RawLaborOf(pawn) : EconomyLedger.GetRawLabor(pawn);
             if (labor <= 0f) return 0;
 
             // 把这一期的工资拆成三笔，分别记账（满意度按这三笔各自扣分）：
@@ -381,7 +396,7 @@ namespace DshEconomy
             MapEconomyComponent comp = map.GetComponent<MapEconomyComponent>();
             float produced = comp != null ? comp.ProducedValueOf(pawn, policy) : policy.ProducedValue(labor, pawn);
             float shareWage = comp != null ? comp.ExpectedWageOf(pawn, policy) : policy.UncappedWage(labor);
-            float capLimitWage = policy.WageFor(labor, pawn, EconomyLedger.GetRawLabor(pawn));
+            float capLimitWage = policy.WageFor(labor, pawn, rawLabor);
 
             EconomyLedger.SetLastExpected(pawn, shareWage);
             float shareCut = Mathf.Max(0f, produced - shareWage);          // 比例抽走的剩余价值
@@ -391,6 +406,17 @@ namespace DshEconomy
             int due = Mathf.RoundToInt(dueFloat);
             // 有劳动但不足 1 银时也给 1，否则小额工资永远发不出去
             if (due <= 0 && dueFloat > 0f) due = 1;
+            DevLog.Msg("[WAGE] " + pawn.LabelShort
+                + " 劳动=" + labor.ToString("0") + "tick(" + (labor / GenDate.TicksPerDay).ToString("0.000") + "日)"
+                + " 实际=" + EconomyLedger.GetRawLabor(pawn).ToString("0") + "tick(" + (EconomyLedger.GetRawLabor(pawn) / GenDate.TicksPerDay).ToString("0.000") + "日)"
+                + " 日值=" + policy.LaborDayValueFor(pawn).ToString("0.#")
+                + " 比例=" + policy.ShareFor(pawn).ToString("0.00")
+                + " 创造=" + produced.ToString("0.#")
+                + " 应得=" + shareWage.ToString("0.#")
+                + " 上限=" + policy.CapFor(pawn).ToString("0.#") + "/日 本题上限=" + policy.WageCapAmountFor(pawn).ToString("0.#")
+                + " 封顶后=" + capLimitWage.ToString("0.#")
+                + " 截留=" + capCut.ToString("0.#")
+                + " 实发=" + due);
             if (due <= 0)
             {
                 EconomyLedger.SetPayCuts(pawn, shareCut, capCut, 0f);

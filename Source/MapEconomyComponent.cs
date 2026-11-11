@@ -705,6 +705,55 @@ namespace DshEconomy
         }
 
         /// <summary>
+        /// 本期的"劳动量"（tick，已乘工种权重）。**工资页面和发薪用的都是这一个数**。
+        /// 优先读界面那份工时表；工时表空才退回旧账本（兼容老存档）。
+        /// </summary>
+        public float LaborOf(Pawn p)
+        {
+            float t = WeightedWorkTicks(p);
+            if (t <= 0f) t = EconomyLedger.GetLabor(p);
+            return t;
+        }
+
+        /// <summary>本期的原始劳动量（tick，未乘权重），日薪上限按它折算。</summary>
+        public float RawLaborOf(Pawn p)
+        {
+            float t = RawWorkTicks(p);
+            if (t <= 0f) t = EconomyLedger.GetRawLabor(p);
+            return t;
+        }
+
+        /// <summary>本期原始工时（tick，未乘权重），直接来自这份存档里记着的工时表。</summary>
+        public float RawWorkTicks(Pawn p)
+        {
+            if (p == null) return 0f;
+            float sum = 0f;
+            List<KeyValuePair<string, float>> list = WorkHoursOf(p);
+            for (int i = 0; i < list.Count; i++) sum += list[i].Value;
+            return sum;
+        }
+
+        /// <summary>本期加权工时（tick，各段按自己工种的权重），工资与界面用的是同一份数据。</summary>
+        public float WeightedWorkTicks(Pawn p)
+        {
+            if (p == null) return 0f;
+            DshEconomySettings s = DshEconomyMod.Settings;
+            float sum = 0f;
+            List<KeyValuePair<string, float>> list = WorkHoursOf(p);
+            for (int i = 0; i < list.Count; i++)
+            {
+                float weight = 1f;
+                if (s != null && list[i].Key != "Other")
+                {
+                    WorkTypeDef wt = DefDatabase<WorkTypeDef>.GetNamedSilentFail(list[i].Key);
+                    if (wt != null) weight = s.GetWorkMult(wt);
+                }
+                sum += list[i].Value * weight;
+            }
+            return sum;
+        }
+
+        /// <summary>
         /// 按类型分别乘权重再加总，得到"本期应得工资"。
         /// 和旧的 labor × 权重 在数值上等价，区别是权重按各段自己的类型取，
         /// 中途改权重、或者一个人干多种活时都算得准。

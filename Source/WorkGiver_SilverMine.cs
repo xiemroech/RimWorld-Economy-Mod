@@ -16,7 +16,7 @@ namespace DshEconomy
     {
         private static WorkGiver_DoBill vanilla;
 
-        private static WorkGiver_DoBill Vanilla()
+        internal static WorkGiver_DoBill Vanilla()
         {
             if (vanilla != null) return vanilla;
             foreach (WorkGiverDef d in DefDatabase<WorkGiverDef>.AllDefs)
@@ -73,7 +73,7 @@ namespace DshEconomy
         /// 原版的 DoBill 判定在 1.7 里对这张账单始终返回 null（各项条件都是 True，却派不出）。
         /// 不再依赖它：自己找原料、自己拼一个标准的 DoBill 任务，格式与原版一致。
         /// </summary>
-        private static Job BuildJob(Pawn p, Thing bench)
+        internal static Job BuildJob(Pawn p, Thing bench)
         {
             try
             {
