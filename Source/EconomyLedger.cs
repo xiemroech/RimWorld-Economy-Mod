@@ -360,6 +360,9 @@ namespace DshEconomy
             Scribe_Collections.Look(ref pawns, "dsh_silverPawns", LookMode.Reference);
             Scribe_Collections.Look(ref silver, "dsh_silverValues", LookMode.Value);
             Scribe_Collections.Look(ref labor, "dsh_laborValues", LookMode.Value);
+            // 未加权劳动（真实工作时间）：日薪上限按它算，不存就会在读档后变成 0，
+            // 于是「上限截留」把整期工资吃光，只发出 1 银。
+            Scribe_Collections.Look(ref laborRaw, "dsh_rawLaborValues", LookMode.Value);
             Scribe_Collections.Look(ref satisfaction, "dsh_satisfaction", LookMode.Value);
             Scribe_Collections.Look(ref income, "dsh_income", LookMode.Value);
             Scribe_Collections.Look(ref incomeLast, "dsh_incomeLast", LookMode.Value);

@@ -21,7 +21,7 @@ namespace DshEconomy
         public enum Source { Recipe = 0, Mine = 1, Harvest = 2, Butcher = 3, Gather = 4 }
 
         /// <summary>一条记录：某个定义的几种来源各发生过多少次（按件数累计）。</summary>
-        public class Record
+        public class Record : IExposable
         {
             public string defName;
             public int recipe;
@@ -29,6 +29,18 @@ namespace DshEconomy
             public int harvest;
             public int butcher;
             public int gather;
+
+            // LookMode.Deep 要求元素实现 IExposable，否则存盘时会报
+            // "Cannot use LookDeep to save non-IExposable non-null li" 并丢掉整张表。
+            public void ExposeData()
+            {
+                Scribe_Values.Look(ref defName, "def", null);
+                Scribe_Values.Look(ref recipe, "recipe", 0);
+                Scribe_Values.Look(ref mine, "mine", 0);
+                Scribe_Values.Look(ref harvest, "harvest", 0);
+                Scribe_Values.Look(ref butcher, "butcher", 0);
+                Scribe_Values.Look(ref gather, "gather", 0);
+            }
         }
 
         /// <summary>存档用的扁平列表（Scribe 不能直接序列化 Dictionary）。</summary>

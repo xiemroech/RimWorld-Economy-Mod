@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using HarmonyLib;
 using RimWorld;
 using Verse;
@@ -37,11 +37,14 @@ namespace DshEconomy
         {
             try
             {
-                // 权威口径：交易会话的货币条目（含商队驮运动物身上的白银）
+                // 不要直接读 deal.CurrencyTradeable：没有货币条目时原版会在 getter 里
+                // 打 ERROR "RimWorld.Tradeable lacks AnyThing."，而我们每次询价都会读一次，把日志刷爆。
+                // 所以先用反射拿 tradeables，自己找 IsCurrency 的那条。
                 TradeDeal deal = TradeSession.deal;
-                if (deal != null && deal.CurrencyTradeable != null)
+                Tradeable currency = FindCurrencyTradeable(deal);
+                if (currency != null)
                 {
-                    int n = deal.CurrencyTradeable.CountHeldBy(Transactor.Trader);
+                    int n = currency.CountHeldBy(Transactor.Trader);
                     if (n >= 0) return n;
                 }
                 Pawn p = TradeSession.trader as Pawn;
@@ -54,6 +57,29 @@ namespace DshEconomy
                 return sum;
             }
             catch { return -1; }
+        }
+
+        private static System.Reflection.FieldInfo tradeablesField;
+        private static bool tradeablesFieldLooked;
+
+        /// <summary>从 TradeDeal 的 tradeables 里找货币条目，绕过原版那个会报错的 getter。</summary>
+        private static Tradeable FindCurrencyTradeable(TradeDeal deal)
+        {
+            if (deal == null) return null;
+            if (!tradeablesFieldLooked)
+            {
+                tradeablesFieldLooked = true;
+                tradeablesField = HarmonyLib.AccessTools.Field(typeof(TradeDeal), "tradeables");
+            }
+            if (tradeablesField == null) return null;
+            System.Collections.IList list = tradeablesField.GetValue(deal) as System.Collections.IList;
+            if (list == null) return null;
+            for (int i = 0; i < list.Count; i++)
+            {
+                Tradeable t = list[i] as Tradeable;
+                if (t != null && t.IsCurrency) return t;
+            }
+            return null;
         }
 
         public static void Begin(ITrader trader)

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!--
+    原版所有"账单"都由“制作”工作类型派活，哪怕配方写的是采矿技能。
+    所以只勾了“采矿”的矿工永远不会去挖银矿场。
+    这里单独注册一个挂在“采矿”下面的派活器，内部直接复用原版 DoBill 的判定，
+    这样矿工和工匠都能来干。
+  -->
+  <WorkGiverDef>
+    <defName>DshEco_MineSilverBill</defName>
+    <giverClass>DshEconomy.WorkGiver_SilverMine</giverClass>
+    <workType>Mining</workType>
+    <priorityInType>60</priorityInType>
+    <verb>开采</verb>
+    <gerund>开采</gerund>
+    <scanThings>true</scanThings>
+    <requiredCapacities>
+      <li>Manipulation</li>
+    </requiredCapacities>
+  </WorkGiverDef>
+
+</Defs>

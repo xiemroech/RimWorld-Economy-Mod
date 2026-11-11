@@ -95,6 +95,8 @@ namespace DshEconomy
             HookMarketHaulBoost(harmony);
             try { BedRestOverride.Apply(harmony); }
             catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 卧床判定独占失败：" + e.Message); }
+            try { SilverMineOnlyMiners.Apply(harmony); }
+            catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 银矿只给矿工失败：" + e.Message); }
             MethodInfo target = AccessTools.Method(typeof(ThingOwner<Thing>), "TryAdd", new[] { typeof(Thing), typeof(bool) });
             if (target == null)
             {

@@ -25,7 +25,7 @@
       </thingDefs>
     </fixedIngredientFilter>
     <products>
-      <DshEco_RawSilver>1</DshEco_RawSilver>
+      <DshEco_RawSilver>5</DshEco_RawSilver>
     </products>
     <recipeUsers>
       <li>DshEco_SilverMine</li>
@@ -57,7 +57,7 @@
       </thingDefs>
     </fixedIngredientFilter>
     <products>
-      <DshEco_RawSilver>4</DshEco_RawSilver>
+      <DshEco_RawSilver>20</DshEco_RawSilver>
     </products>
     <recipeUsers>
       <li>DshEco_SilverMine</li>

@@ -517,7 +517,7 @@ namespace DshEconomy
                 }
                 if (Widgets.ButtonText(new Rect(view.x + 296f, y, 140f, 26f), "打印状态"))
                 {
-                    DevLog.Msg("[DSH-ECONOMY] 调试：国库=" + EconomyBank.ColonySilver(map)
+                    Log.Message("[DSH-ECONOMY] 调试：国库=" + EconomyBank.ColonySilver(map)
                         + " 劳动=" + (EconomyLedger.TotalLabor(map.mapPawns.FreeColonists) / GenDate.TicksPerDay).ToString("0.00") + " 人日"
                         + " 个股民=" + map.mapPawns.FreeColonists.Count);
                 }
@@ -526,13 +526,13 @@ namespace DshEconomy
                 // 产地统计的调试按钮：不用真的去挖矿/种地，也能立刻看到统计生效后的价格
                 if (Widgets.ButtonText(new Rect(view.x, y, 140f, 26f), "产地统计·打印"))
                 {
-                    DevLog.Msg("[DSH-ECONOMY] 产地统计：共 " + EconomyProductionStats.records.Count + " 条记录");
+                    Log.Message("[DSH-ECONOMY] 产地统计：共 " + EconomyProductionStats.records.Count + " 条记录");
                     int shown = 0;
                     for (int i = 0; i < EconomyProductionStats.records.Count && shown < 40; i++)
                     {
                         EconomyProductionStats.Record r = EconomyProductionStats.records[i];
                         if (r == null) continue;
-                        DevLog.Msg("[DSH-ECONOMY]   产地 " + r.defName + "：合成 " + r.recipe
+                        Log.Message("[DSH-ECONOMY]   产地 " + r.defName + "：合成 " + r.recipe
                             + " / 挖掘 " + r.mine + " / 收割 " + r.harvest
                             + " / 屠宰 " + r.butcher + " / 产出 " + r.gather);
                         shown++;
@@ -552,6 +552,11 @@ namespace DshEconomy
                 {
                     EconomyValue.DumpFoodBranch();
                     Messages.Message("已打印到 Player.log（搜 [FOOD]）", MessageTypeDefOf.NeutralEvent, false);
+                }
+                if (Widgets.ButtonText(new Rect(view.x + 592f, y, 140f, 26f), "银矿体检"))
+                {
+                    DshEconomyDebug.CheckSilverMine();
+                    Messages.Message("已打印到 Player.log（搜 [MINE]）", MessageTypeDefOf.NeutralEvent, false);
                 }
                 y += 30f;
 

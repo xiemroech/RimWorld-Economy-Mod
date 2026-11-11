@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using RimWorld;
 using UnityEngine;
@@ -93,6 +93,29 @@ namespace DshEconomy
         private Dictionary<Pawn, float> bonusSpeed = new Dictionary<Pawn, float>();
         private List<Pawn> bonusSpeedPawns = new List<Pawn>();
         private List<float> bonusSpeedValues = new List<float>();
+
+        /// <summary>
+        /// 银矿场是露天体力活、没有座位，站着干活会一直被原版扣舒适度。
+        /// 挖矿期间把舒适度托住，离开矿场就恢复正常规则（不额外加）。
+        /// </summary>
+        private void KeepMinerComfort()
+        {
+            try
+            {
+                List<Pawn> crew = map.mapPawns.FreeColonists;
+                for (int i = 0; i < crew.Count; i++)
+                {
+                    Pawn p = crew[i];
+                    if (p == null || p.needs == null || p.needs.comfort == null) continue;
+                    if (p.CurJob == null) continue;
+                    Thing t = p.CurJob.targetA.Thing;
+                    if (t == null || t.def == null) continue;
+                    if (t.def.defName != "DshEco_SilverMine") continue;
+                    if (p.needs.comfort.CurLevel < 0.55f) p.needs.comfort.CurLevel = 0.55f;
+                }
+            }
+            catch { }
+        }
 
         /// <summary>
         /// 穿在身上的衣服，耐久掉到设置的比例以下时，自动撕掉私有标签、交回集体。
@@ -504,6 +527,9 @@ namespace DshEconomy
 
                 // 衣服磨损到阈值以下：撕掉私有标签，交回集体
                 PublicizeWornOutApparel();
+
+                // 矿场没有座位，小人站着挖会一直被扣舒适度；挖矿是体力活，这里不让他掉
+                KeepMinerComfort();
 
                 // 口粮探针：开发者模式下每 250 tick 打一次"每人背包里几份食物 + 在干什么"，
                 // 用来抓"原版拿一份→被放回去→再拿"的循环。正式游玩不会输出。

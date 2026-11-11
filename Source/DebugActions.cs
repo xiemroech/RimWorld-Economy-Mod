@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using LudeonTK;
 using RimWorld;
+using Verse.AI;
 using UnityEngine;
 using Verse;
 
@@ -705,6 +706,110 @@ namespace DshEconomy
         public static void DumpTextures()
         {
             TextureDump.Force();
+        }
+
+        /// <summary>银矿体检：把"为什么没人来干"的每一道关卡都打一行，用来定位账单卡在哪。</summary>
+        [DebugAction("DSH经济", "银矿体检", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        public static void CheckSilverMine()
+        {
+            Map map = Find.CurrentMap;
+            if (map == null) return;
+
+            WorkGiver_DoBill doBill = null;
+            try
+            {
+                // 全部 WorkGiver_DoBill 都会命中（医疗手术那个也是它的子类），
+                // 必须挑"制作"工作类型的那一个，否则测的根本不是账单派活。
+                List<WorkGiverDef> all = new List<WorkGiverDef>();
+                foreach (WorkGiverDef def in DefDatabase<WorkGiverDef>.AllDefs)
+                {
+                    if (def == null || def.Worker == null) continue;
+                    if (!(def.Worker is WorkGiver_DoBill)) continue;
+                    all.Add(def);
+                    string wt = def.workType != null ? def.workType.defName : "无";
+                    Log.Message("[MINE] 候选 DoBill：" + def.defName + " 工作类型=" + wt);
+                    if (doBill == null && (def.defName == "DoBill" || wt == "Crafting")) doBill = def.Worker as WorkGiver_DoBill;
+                }
+                if (doBill == null && all.Count > 0) doBill = all[0].Worker as WorkGiver_DoBill;
+            }
+            catch { }
+            Log.Message("[MINE] 实际用来测的 DoBill=" + (doBill == null ? "没找到" : doBill.def.defName));
+
+            int found = 0;
+            foreach (Building b in map.listerBuildings.allBuildingsColonist)
+            {
+                if (b == null || b.def == null) continue;
+                if (b.def.defName != "DshEco_SilverMine" && b.def.defName != "DshEco_SilverBench") continue;
+                found++;
+                Log.Message("[MINE] ==== " + b.def.defName + " @ " + b.Position
+                    + " 已生成=" + b.Spawned + " 损坏=" + b.Destroyed);
+
+                IBillGiver giver = b as IBillGiver;
+                if (giver == null || giver.BillStack == null)
+                {
+                    Log.Message("[MINE] 不是账单建筑（IBillGiver 缺失）");
+                    continue;
+                }
+                Log.Message("[MINE] 账单数=" + giver.BillStack.Count
+                    + " 交互格=" + b.InteractionCell
+                    + " 有交互格=" + b.def.hasInteractionCell
+                    + " 断电=" + (b.TryGetComp<CompPowerTrader>() != null && !b.TryGetComp<CompPowerTrader>().PowerOn)
+                    + " 故障=" + EconomyDepreciation.IsBroken(b));
+
+                foreach (Bill bill in giver.BillStack)
+                {
+                    if (bill == null || bill.recipe == null) continue;
+                    string allow = "?";
+                    try
+                    {
+                        int ok = 0;
+                        foreach (Pawn p in map.mapPawns.FreeColonists)
+                            if (!p.Dead && !p.Downed && bill.PawnAllowedToStartAnew(p)) ok++;
+                        allow = ok + "/" + map.mapPawns.FreeColonists.Count;
+                    }
+                    catch { }
+                    Log.Message("[MINE] 账单 " + bill.recipe.defName
+                        + " 暂停=" + bill.suspended
+                        + " 该做了=" + bill.ShouldDoNow()
+                        + " 工时可做=" + (bill.recipe.workAmount > 0f)
+                        + " 技能=" + (bill.recipe.workSkill != null ? bill.recipe.workSkill.defName : "无")
+                        + " 允许开工人数=" + allow
+                        + " 研究已好=" + (bill.recipe.researchPrerequisite == null || bill.recipe.researchPrerequisite.IsFinished));
+                }
+
+                foreach (Pawn p in map.mapPawns.FreeColonists)
+                {
+                    if (p == null || p.Dead || p.Downed) continue;
+                    IntVec3 cell = b.InteractionCell;
+                    bool standable = cell.Standable(map);
+                    bool reach1 = false, reach2 = false, reach3 = false;
+                    try { reach1 = map.reachability.CanReach(p.Position, cell, PathEndMode.OnCell, TraverseMode.PassDoors, Danger.Some); } catch { }
+                    try { reach2 = p.CanReach(cell, PathEndMode.ClosestTouch, Danger.Some); } catch { }
+                    try { reach3 = p.CanReach(b, PathEndMode.InteractionCell, Danger.Some); } catch { }
+                    bool mineOk = false;
+                    try { mineOk = p.workSettings != null && p.workSettings.WorkIsActive(WorkTypeDefOf.Mining); } catch { }
+                    bool craftOk = false;
+                    try { craftOk = p.workSettings != null && p.workSettings.WorkIsActive(WorkTypeDefOf.Crafting); } catch { }
+                    string job = "无";
+                    if (doBill != null)
+                    {
+                        try
+                        {
+                            Job j = doBill.JobOnThing(p, b, false);
+                            job = j == null ? "空" : j.def.defName;
+                        }
+                        catch (System.Exception e) { job = "异常:" + e.GetType().Name; }
+                    }
+                    Log.Message("[MINE]   " + p.LabelShort
+                        + " 格可站=" + standable
+                        + " 路1=" + reach1 + " 路2=" + reach2 + " 路3=" + reach3
+                        + " 采矿工作=" + mineOk
+                        + " 制作工作=" + craftOk
+                        + " DoBill=" + job
+                        + " 当前=" + (p.CurJobDef == null ? "无" : p.CurJobDef.defName));
+                }
+            }
+            if (found == 0) Log.Message("[MINE] 本图没有银矿场/银加工台");
         }
     }
 }

@@ -35,6 +35,8 @@
       <drawSize>(2,2)</drawSize>
     </graphicData>
     <tickerType>Normal</tickerType>
+    <hasInteractionCell>true</hasInteractionCell>
+    <interactionCellOffset>(0,0,-1)</interactionCellOffset>
     <passability>PassThroughOnly</passability>
     <fillPercent>0.4</fillPercent>
     <designationCategory>Production</designationCategory>
