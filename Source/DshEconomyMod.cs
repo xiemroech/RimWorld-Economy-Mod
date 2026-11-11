@@ -495,9 +495,9 @@ namespace DshEconomy
             {
                 Settings.purchaseLogDays = Mathf.Min(60f, Settings.purchaseLogDays + 1f);
             }
-            if (Widgets.ButtonText(new Rect(view.x + 404f, y, 120f, 26f), "查看购买记录"))
+            if (Widgets.ButtonText(new Rect(view.x + 404f, y, 120f, 26f), "清空购买记录"))
             {
-                Find.WindowStack.Add(new Window_PurchaseLog());
+                EconomyPurchaseLog.Clear();
             }
             Widgets.Label(new Rect(view.x + 532f, y + 4f, 900f, 24f),
                 "超过这个天数的记录会自动清掉（0 = 永久保留）。");

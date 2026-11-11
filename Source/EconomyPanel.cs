@@ -887,7 +887,11 @@ namespace DshEconomy
             {
                 Find.WindowStack.Add(new Window_Desire(map));
             }
-            Widgets.Label(new Rect(296f, 10f, 240f, 22f),
+            if (Widgets.ButtonText(new Rect(294f, 4f, 120f, 26f), "购买记录"))
+            {
+                Find.WindowStack.Add(new Window_PurchaseLog());
+            }
+            Widgets.Label(new Rect(420f, 10f, 240f, 22f),
                 "在售容器 " + EconomyRealEstate.CountForSale(map) + " 个");
 
             if (Widgets.ButtonText(new Rect(viewRect.width - 300f, 4f, 60f, 26f), "财富"))
