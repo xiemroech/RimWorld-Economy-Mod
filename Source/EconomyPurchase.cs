@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using HarmonyLib;
 using RimWorld;
 using UnityEngine;
@@ -129,6 +129,7 @@ namespace DshEconomy
                 }
 
                 int paid = EconomyBank.TakePrivateSilver(map, ingester, price);
+                EconomyPurchaseLog.Add(ingester, __instance, __instance.stackCount, paid);
                 DevLog.Msg("[DSH-ECONOMY] 购买：" + ingester.LabelShort + " 花 " + paid
                     + " 买了 " + __instance.LabelNoCount + "（" + cat.label + " 公共化 "
                     + comp.GetPublicization(cat).ToString("0") + "%）");

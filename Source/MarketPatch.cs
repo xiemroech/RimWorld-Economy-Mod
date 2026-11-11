@@ -97,6 +97,8 @@ namespace DshEconomy
             catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 卧床判定独占失败：" + e.Message); }
             try { SilverMineOnlyMiners.Apply(harmony); }
             catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 银矿只给矿工失败：" + e.Message); }
+            try { NewColonistGear.Apply(harmony); }
+            catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 新人装备私有化失败：" + e.Message); }
             MethodInfo target = AccessTools.Method(typeof(ThingOwner<Thing>), "TryAdd", new[] { typeof(Thing), typeof(bool) });
             if (target == null)
             {
@@ -558,11 +560,18 @@ namespace DshEconomy
             catch { return true; }
         }
 
+        private static int lastMergeLogTick = -999;
+
         private static void MergeProbeLog(Thing a, Thing b, string why)
         {
             try
             {
                 if (Find.TickManager == null) return;
+                // CanStackWith 每 tick 会被存储/搬运判定反复调用，
+                // 不限速会把 Player.log 刷到几百 MB（实测刷到 868MB）。
+                int now = Find.TickManager.TicksGame;
+                if (now - lastMergeLogTick < 600) return;
+                lastMergeLogTick = now;
                 DevLog.Msg("[MERGE] " + why + "：" + (a.def != null ? a.def.defName : "?") + " + " + (b.def != null ? b.def.defName : "?"));
             }
             catch { }

@@ -266,6 +266,8 @@ namespace DshEconomy
             MergeOwnedStacks(p, found.def);                   // 同类私有合并成一堆
 
             DevLog.Msg("[DSH-ECONOMY] 结算完成：" + p.LabelShort + " 拿到 " + found.def.label);
+            EconomyPurchaseLog.Add(p, found, rec.count,
+                EconomyPrice.UnitPrice(found, p.MapHeld) * Mathf.Max(1, rec.count));
             return true;
         }
 

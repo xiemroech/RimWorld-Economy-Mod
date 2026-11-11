@@ -70,7 +70,8 @@ namespace DshEconomy
 
         // 衣服耐久低于这个比例就自动转成公有（0 = 关闭）
         public float apparelPublicizeAt = 0.25f;
-        public List<string> shortageOnlyCats = new List<string>();
+        /// <summary>购买记录保留天数；0 = 永久。</summary>
+        public float purchaseLogDays = 2f;        public List<string> shortageOnlyCats = new List<string>();
         public List<string> shortageOnlyDefs = new List<string>();
 
         public static float DefaultWorkMult(string defName)
@@ -131,6 +132,7 @@ namespace DshEconomy
             if (restockPresets == null) restockPresets = new List<string>();
             Scribe_Values.Look(ref shortageVanillaOnly, "dsh_shortageVanillaOnly", false);
             Scribe_Values.Look(ref apparelPublicizeAt, "dsh_apparelPublicizeAt", 0.25f);
+            Scribe_Values.Look(ref purchaseLogDays, "dsh_purchaseLogDays", 2f);
             Scribe_Collections.Look(ref shortageOnlyCats, "dsh_shortageOnlyCats", LookMode.Value);
             if (shortageOnlyCats == null) shortageOnlyCats = new List<string>();
             Scribe_Collections.Look(ref shortageOnlyDefs, "dsh_shortageOnlyDefs", LookMode.Value);
@@ -480,6 +482,26 @@ namespace DshEconomy
             Widgets.Label(new Rect(view.x + 30f, y + 4f, 900f, 24f),
                 "打印诊断日志：排查问题时才勾，平时勾着会把 Player.log 刷满。");
             y += 30f;
+
+            // 购买记录
+            Widgets.Label(new Rect(view.x, y + 4f, 240f, 24f), "购买记录保留");
+            if (Widgets.ButtonText(new Rect(view.x + 244f, y, 34f, 26f), "-"))
+            {
+                Settings.purchaseLogDays = Mathf.Max(0f, Settings.purchaseLogDays - 1f);
+            }
+            Widgets.Label(new Rect(view.x + 282f, y + 4f, 80f, 24f),
+                Settings.purchaseLogDays <= 0f ? "永久" : Settings.purchaseLogDays.ToString("0") + " 天");
+            if (Widgets.ButtonText(new Rect(view.x + 362f, y, 34f, 26f), "+"))
+            {
+                Settings.purchaseLogDays = Mathf.Min(60f, Settings.purchaseLogDays + 1f);
+            }
+            if (Widgets.ButtonText(new Rect(view.x + 404f, y, 120f, 26f), "查看购买记录"))
+            {
+                Find.WindowStack.Add(new Window_PurchaseLog());
+            }
+            Widgets.Label(new Rect(view.x + 532f, y + 4f, 900f, 24f),
+                "超过这个天数的记录会自动清掉（0 = 永久保留）。");
+            y += 32f;
 
             if (Settings.debugMode && map != null && comp != null)
             {

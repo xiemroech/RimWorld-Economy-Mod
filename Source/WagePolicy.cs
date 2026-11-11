@@ -389,7 +389,14 @@ namespace DshEconomy
             // 以前两套数并存，界面上有、发薪却是 0，读档后更容易对不上。
             float labor = mcomp0 != null ? mcomp0.LaborOf(pawn) : EconomyLedger.GetLabor(pawn);
             float rawLabor = mcomp0 != null ? mcomp0.RawLaborOf(pawn) : EconomyLedger.GetRawLabor(pawn);
-            if (labor <= 0f) return 0;
+            if (labor <= 0f)
+            {
+                DevLog.Msg("[WAGE-0] " + pawn.LabelShort + " 本期发薪跳过：劳动量=0"
+                    + "｜工时表条数=" + (mcomp0 != null ? mcomp0.WorkHoursOf(pawn).Count : -1)
+                    + "｜当前活=" + (pawn.CurJobDef != null ? pawn.CurJobDef.defName : "无")
+                    + "｜军人=" + EconomyMilitary.IsSoldier(pawn));
+                return 0;
+            }
 
             // 把这一期的工资拆成三笔，分别记账（满意度按这三笔各自扣分）：
             //   创造价值(100%) → 按工资比例该给他的部分 → 受日薪上限约束后的应发 → 实发
@@ -429,6 +436,10 @@ namespace DshEconomy
 
             // 应发但没发出去的部分（国库空）单独记一笔
             EconomyLedger.SetPayCuts(pawn, shareCut, capCut, Mathf.Max(0f, due - taken));
+            DevLog.Msg("[WAGE-2] " + pawn.LabelShort + " 国库=" + available + " 计划=" + pay
+                + " 实拆=" + taken + " 差额=" + (pay - taken)
+                + " 背包银=" + EconomyBank.BagSilverOf(pawn)
+                + " 私银统计=" + EconomyBank.PrivateSilver(map, pawn));
 
             if (taken <= 0) return 0;
 

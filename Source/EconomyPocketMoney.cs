@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -94,15 +94,11 @@ namespace DshEconomy
             IntVec3 cell;
             if (!FindFreeCell(p, map, out cell))
             {
-                // 自己仓库塞不下：超额的零钱直接"去标签"变回公共，交给公共白银回收逻辑搬走/丢下，
-                // 否则这叠私有白银会永远留在背包里，既不算工资也没人处理
-                Thing free = stack.SplitOff(Mathf.Min(excess, stack.stackCount));
-                if (free != null)
-                {
-                    EconomyPrivate.SetPrivate(free, null);
-                    DevLog.Msg("[DSH-ECONOMY] 零钱超额：" + p.LabelShort + " 身上 " + carried + " 银超过上限 "
-                                + limit + "，且私有仓库没空格，" + free.stackCount + " 银转回公共");
-                }
+                // 自己仓库塞不下：就把超出的零钱**留在身上**，不要撕标签。
+                // 以前这里会把整笔工资"变回公共"，导致刚发的工钱一转身就没了，
+                // 面板显示"有"，背包里只剩个位数。
+                DevLog.Msg("[DSH-ECONOMY] 零钱超额：" + p.LabelShort + " 身上 " + carried
+                            + " 银超过上限 " + limit + "，但私有仓库没空格，先留在身上");
                 return;
             }
 

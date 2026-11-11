@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Text;
 using RimWorld;
 using UnityEngine;
@@ -75,9 +75,19 @@ namespace DshEconomy
         private static bool groundScanned;
 
         /// <summary>读档后扫一次地图上的私有物，重建 grounded 登记表（只做一次）。</summary>
-        public static void ScanGroundOnce(Map map)
+        /// <summary>背包剩余负重是否还宽裕（剩余 &gt; 总容量的 10%）。</summary>
+        private static bool HasSpareRoom(Pawn p)
         {
-            if (groundScanned || map == null || map.listerThings == null) return;
+            if (p == null) return true;
+            float cap = MassUtility.Capacity(p);
+            if (cap <= 0.01f) return false;
+            float used = MassUtility.GearAndInventoryMass(p);
+            float left = cap - used;
+            return left > cap * 0.10f;
+        }
+
+        public static void ScanGroundOnce(Map map)
+        {            if (groundScanned || map == null || map.listerThings == null) return;
             groundScanned = true;
             int n = 0;
             List<Thing> all = map.listerThings.AllThings;
@@ -258,6 +268,11 @@ namespace DshEconomy
 
                 // 背包里的东西不能直接当 HaulToCell 的目标：先丢到脚下，再搬
                 bool carried = item.ParentHolder is Pawn_InventoryTracker;
+                if (carried && HasSpareRoom(p))
+                {
+                    // 还装得下就别急着丢：只有剩余负重不足 10% 时才卸货
+                    continue;
+                }
                 if (carried)
                 {
                     if (p.inventory == null) continue;

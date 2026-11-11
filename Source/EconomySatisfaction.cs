@@ -525,12 +525,12 @@ namespace DshEconomy
 
                 // ⑥ 工作被认可：本期劳动量不低于殖民地平均
                 List<Pawn> all = mapPos.mapPawns.FreeColonists;
-                if (all.Count > 1 && EconomyLedger.GetLabor(p) > 0.01f)
+                if (all.Count > 1 && MapEconomyComponent.LaborOnMap(p) > 0.01f)
                 {
                     float sum = 0f;
-                    for (int i = 0; i < all.Count; i++) sum += EconomyLedger.GetLabor(all[i]);
+                    for (int i = 0; i < all.Count; i++) sum += MapEconomyComponent.LaborOnMap(all[i]);
                     float avg = sum / all.Count;
-                    if (avg > 0.01f && EconomyLedger.GetLabor(p) >= avg)
+                    if (avg > 0.01f && MapEconomyComponent.LaborOnMap(p) >= avg)
                     {
                         Add(entries, "工作被认可（劳动量高于平均）", 1f);
                         total += 1f;
@@ -606,8 +606,8 @@ namespace DshEconomy
                 if (crew.Count > 1)
                 {
                     int working = 0;
-                    for (int i = 0; i < crew.Count; i++) if (EconomyLedger.GetLabor(crew[i]) > 0.01f) working++;
-                    if (working >= Mathf.CeilToInt(crew.Count * 0.9f) && EconomyLedger.GetLabor(p) > 0.01f)
+                    for (int i = 0; i < crew.Count; i++) if (MapEconomyComponent.LaborOnMap(crew[i]) > 0.01f) working++;
+                    if (working >= Mathf.CeilToInt(crew.Count * 0.9f) && MapEconomyComponent.LaborOnMap(p) > 0.01f)
                     {
                         Add(entries, "劳动光荣（" + working + "/" + crew.Count + " 人在劳动）", 3f);
                         total += 3f;
@@ -646,7 +646,7 @@ namespace DshEconomy
             }
 
             // 3.5 短工时加成：今天干活但不满 8 小时，越少越"清闲"，最多 +6
-            if (hours > 0.01f && hours < StandardHoursPerDay && EconomyLedger.GetLabor(p) > 0.01f)
+            if (hours > 0.01f && hours < StandardHoursPerDay && MapEconomyComponent.LaborOnMap(p) > 0.01f)
             {
                 float idle = (StandardHoursPerDay - hours) / StandardHoursPerDay;
                 float bonus = Mathf.Min(6f, Mathf.Round(idle * 6f));

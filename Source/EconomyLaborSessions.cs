@@ -299,6 +299,7 @@ namespace DshEconomy
             base.ExposeData();
             EconomyLaborSessions.ExposeData();
             EconomyWorkTypes.ExposeData();
+            EconomyPurchaseLog.ExposeData();
         }
     }
 }

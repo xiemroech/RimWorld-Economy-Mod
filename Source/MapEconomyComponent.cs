@@ -527,6 +527,7 @@ namespace DshEconomy
 
                 // 衣服磨损到阈值以下：撕掉私有标签，交回集体
                 PublicizeWornOutApparel();
+                EconomyPurchaseLog.Prune();
 
                 // 矿场没有座位，小人站着挖会一直被扣舒适度；挖矿是体力活，这里不让他掉
                 KeepMinerComfort();
@@ -705,6 +706,21 @@ namespace DshEconomy
         }
 
         /// <summary>
+        /// 静态入口：按小人所在地图取统一劳动口径（工资/满意度/界面都用它）。
+        /// 拿不到地图时退回旧账本。
+        /// </summary>
+        public static float LaborOnMap(Pawn p)
+        {
+            if (p == null) return 0f;
+            if (p.Map != null)
+            {
+                MapEconomyComponent c = p.Map.GetComponent<MapEconomyComponent>();
+                if (c != null) return c.LaborOf(p);
+            }
+            return EconomyLedger.GetLabor(p);
+        }
+
+        /// <summary>
         /// 本期的"劳动量"（tick，已乘工种权重）。**工资页面和发薪用的都是这一个数**。
         /// 优先读界面那份工时表；工时表空才退回旧账本（兼容老存档）。
         /// </summary>
@@ -849,10 +865,10 @@ namespace DshEconomy
             List<Pawn> colonists = map.mapPawns.FreeColonists;
             for (int i = 0; i < colonists.Count; i++)
             {
-                float lab = EconomyLedger.GetLabor(colonists[i]);
+                float lab = LaborOf(colonists[i]);
                 if (lab <= 0f) continue;
                 totalProduced += wages.ProducedValue(lab, colonists[i]);
-                totalWage += wages.WageFor(lab, colonists[i], EconomyLedger.GetRawLabor(colonists[i]));
+                totalWage += wages.WageFor(lab, colonists[i], RawLaborOf(colonists[i]));
                 paidPeople++;
             }
 
@@ -894,6 +910,17 @@ namespace DshEconomy
             // 发完钱立刻重算满意度，让"三笔缺口"当场反映到进度条上
             EconomySatisfaction.RecomputeAll(map);
 
+            // 现场核对：发完这一刻，每个人身上到底有多少银
+            List<Pawn> checkPawns = map.mapPawns.FreeColonists;
+            for (int ci = 0; ci < checkPawns.Count; ci++)
+            {
+                Pawn cp = checkPawns[ci];
+                DevLog.Msg("[PAY-CHECK] " + cp.LabelShort
+                    + " 背包银=" + EconomyBank.BagSilverOf(cp)
+                    + " 私银统计=" + EconomyBank.PrivateSilver(map, cp)
+                    + " 本次发薪=" + paid);
+            }
+
             if (s != null && s.sendPayLetter && (paid > 0 || bonusPaid > 0))
             {
                 int silverAfter = EconomyBank.ColonySilver(map);
@@ -916,7 +943,9 @@ namespace DshEconomy
                     + "—— 总结 ——\n"
                     + "国库变化：" + silverBefore + " → " + silverAfter + " 白银\n"
                     + (net >= 0 ? "本期净赚：" + net + " 白银\n" : "本期净亏：" + (-net) + " 白银\n")
-                    + "剩余留存：" + Mathf.Max(0f, totalProduced - totalWage).ToString("0.#") + " 白银";
+                    // 留存 = 创造的 − 真正发出去的（含奖金）。
+                    // 不能用"应得"减：被日薪上限截下的那部分没发出去，钱还在国库里，属于留存。
+                    + "剩余留存：" + Mathf.Max(0f, totalProduced - spent).ToString("0.#") + " 白银";
                 Find.LetterStack.ReceiveLetter("发薪日", body, LetterDefOf.NeutralEvent, null, null, null, null, null);
             }
             return paid;

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -8,6 +8,44 @@ namespace DshEconomy
     /// <summary>殖民地公共库存与个人白银之间的搬运工具。</summary>
     public static class EconomyBank
     {
+        /// <summary>
+        /// 所有"能用"的白银来源：地上的银堆 + 建筑内部容器里（木货箱/冰箱/摊位等）的银。
+        /// 以前只查地面，导致国库账面有 1600、实际只拆得出 1~3 银。
+        /// </summary>
+        public static List<Thing> SilverSources(Map map)
+        {
+            List<Thing> list = new List<Thing>();
+            if (map == null) return list;
+
+            if (map.listerThings != null)
+            {
+                List<Thing> onMap = map.listerThings.ThingsOfDef(ThingDefOf.Silver);
+                for (int i = 0; i < onMap.Count; i++) list.Add(onMap[i]);
+            }
+
+            if (map.listerBuildings != null)
+            {
+                List<Building> bs = map.listerBuildings.allBuildingsColonist;
+                for (int i = 0; i < bs.Count; i++)
+                {
+                    ThingOwner held = null;
+                    try
+                    {
+                        IThingHolder holder = bs[i] as IThingHolder;
+                        if (holder != null) held = holder.GetDirectlyHeldThings();
+                    }
+                    catch { }
+                    if (held == null || held.Count == 0) continue;
+                    for (int j = 0; j < held.Count; j++)
+                    {
+                        Thing t = held[j];
+                        if (t != null && t.def == ThingDefOf.Silver) list.Add(t);
+                    }
+                }
+            }
+            return list;
+        }
+
         /// <summary>
         /// 公共库存白银总量：地图上的公共银堆 + 小人背包里尚未私有化的银币
         /// （"搬运中的公共物资"也算国库，否则收税后银币留在背包里会从账面消失）。
@@ -19,9 +57,10 @@ namespace DshEconomy
 
             if (map.listerThings != null)
             {
-                List<Thing> stacks = map.listerThings.ThingsOfDef(ThingDefOf.Silver);
+                List<Thing> stacks = SilverSources(map);
                 for (int i = 0; i < stacks.Count; i++)
                 {
+                    if (stacks[i] == null || stacks[i].Destroyed) continue;
                     if (EconomyPrivate.IsPrivate(stacks[i])) continue;
                     total += stacks[i].stackCount;
                 }
@@ -49,11 +88,11 @@ namespace DshEconomy
         {
             if (map == null || amount <= 0) return 0;
             int remaining = amount;
-            List<Thing> stacks = map.listerThings.ThingsOfDef(ThingDefOf.Silver);
+            List<Thing> stacks = SilverSources(map);
             for (int i = 0; i < stacks.Count && remaining > 0; i++)
             {
                 Thing stack = stacks[i];
-                if (stack.Destroyed) continue;
+                if (stack == null || stack.Destroyed) continue;
                 if (EconomyPrivate.IsPrivate(stack)) continue;
                 int take = remaining < stack.stackCount ? remaining : stack.stackCount;
                 stack.stackCount -= take;
@@ -285,7 +324,30 @@ namespace DshEconomy
             if (map == null || pawn == null || amount <= 0) return 0;
 
             int remaining = amount;
-            List<Thing> stacks = map.listerThings.ThingsOfDef(ThingDefOf.Silver);
+
+            // ① 先花"小人背包里的公共银"。国库（ColonySilver）把它算在内，但它不在
+            //    listerThings 里，以前只从地面拆 → 国库显示 1641、地上只有 1 银时，
+            //    每人只能拿到 1，差额静默丢失（WAGE-2 日志里的"计划 57 实拆 1"）。
+            List<Pawn> bagOwners = map.mapPawns.FreeColonists;
+            for (int b = 0; b < bagOwners.Count && remaining > 0; b++)
+            {
+                Pawn owner = bagOwners[b];
+                if (owner.inventory == null || owner.inventory.innerContainer == null) continue;
+                IList<Thing> innerBag = owner.inventory.innerContainer;
+                for (int j = 0; j < innerBag.Count && remaining > 0; j++)
+                {
+                    Thing bagSilver = innerBag[j];
+                    if (bagSilver == null || bagSilver.Destroyed) continue;
+                    if (bagSilver.def != ThingDefOf.Silver) continue;
+                    if (EconomyPrivate.IsPrivate(bagSilver)) continue;
+                    int bagTake = remaining < bagSilver.stackCount ? remaining : bagSilver.stackCount;
+                    bagSilver.stackCount -= bagTake;
+                    remaining -= bagTake;
+                    if (bagSilver.stackCount <= 0) bagSilver.Destroy();
+                }
+            }
+
+            List<Thing> stacks = SilverSources(map);
             for (int i = 0; i < stacks.Count && remaining > 0; i++)
             {
                 Thing src = stacks[i];
@@ -317,7 +379,7 @@ namespace DshEconomy
                         break;
                     }
                 }
-                if (merged) continue;
+                if (merged) { DevLog.Msg("[PAY] " + pawn.LabelShort + " 并进背包已有的私有银 +" + take); continue; }
 
                 // ② 否则不合并地塞进背包：合并会让 coin 被销毁，标签随之丢失
                 EconomyPrivate.SetPrivate(coin, pawn);
@@ -325,14 +387,62 @@ namespace DshEconomy
                     && pawn.inventory.innerContainer.TryAdd(coin, false))
                 {
                     // 已入包，标签就在 coin 上
+                    DevLog.Msg("[PAY] " + pawn.LabelShort + " 银币入包 +" + take
+                        + " 现在背包银=" + BagSilverOf(pawn));
                 }
                 else
                 {
                     GenPlace.TryPlaceThing(coin, pawn.PositionHeld, map, ThingPlaceMode.Near, out Thing placed);
                     if (placed != null && placed != coin) EconomyPrivate.SetPrivate(placed, pawn);
+                    DevLog.Msg("[PAY] " + pawn.LabelShort + " 入包失败，丢在脚下 +" + take
+                        + " 落地=" + (placed != null) + " 现在背包银=" + BagSilverOf(pawn));
+                }
+
+                // 关键：把币塞进背包时，若它被并进了一堆"没有标签的公共银"，
+                // 引擎会销毁 coin、标签随之消失 → 工资变回国库。
+                // 这里事后检查：coin 没了，就把那堆并过去的目标重新打上标签。
+                if (coin.Destroyed || coin.ParentHolder == null)
+                {
+                    Thing host = FindUntaggedSilverInBag(pawn);
+                    if (host != null)
+                    {
+                        EconomyPrivate.SetPrivate(host, pawn);
+                        DevLog.Msg("[PAY] " + pawn.LabelShort + " 的银币被并进公共堆，已把该堆 ×"
+                            + host.stackCount + " 重新标为私有");
+                    }
+                    else
+                    {
+                        DevLog.Msg("[PAY] " + pawn.LabelShort + " 的银币被并掉且找不到宿主堆（钱可能已丢）");
+                    }
                 }
             }
             return amount - remaining;
+        }
+
+        /// <summary>在背包里找一堆"没有主人标签"的白银，用来接手被合并掉的那笔工资。</summary>
+        public static Thing FindUntaggedSilverInBag(Pawn p)
+        {
+            if (p == null || p.inventory == null || p.inventory.innerContainer == null) return null;
+            IList<Thing> inner = p.inventory.innerContainer;
+            for (int i = 0; i < inner.Count; i++)
+            {
+                Thing t = inner[i];
+                if (t == null || t.Destroyed) continue;
+                if (t.def != ThingDefOf.Silver) continue;
+                if (EconomyPrivate.OwnerOf(t) != null) continue;
+                return t;
+            }
+            return null;
+        }
+
+        public static int BagSilverOf(Pawn p)
+        {
+            if (p == null || p.inventory == null || p.inventory.innerContainer == null) return 0;
+            int n = 0;
+            IList<Thing> inner = p.inventory.innerContainer;
+            for (int i = 0; i < inner.Count; i++)
+                if (inner[i] != null && !inner[i].Destroyed && inner[i].def == ThingDefOf.Silver) n += inner[i].stackCount;
+            return n;
         }
     }
 }

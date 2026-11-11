@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using Verse;
 
@@ -36,7 +36,8 @@ namespace DshEconomy
         {
             try
             {
-                if (t != null && t.def != null && t.def.IsIngestible && !t.Destroyed)
+                if (t != null && t.def != null && !t.Destroyed
+                    && (t.def.IsIngestible || t.def == ThingDefOf.Silver))
                 {
                     Pawn before = null;
                     try { before = OwnerOf(t); } catch { }
@@ -59,6 +60,34 @@ namespace DshEconomy
                 c = TagOf(t);
             }
             if (c != null) c.owner = owner;   // 只改字段，绝不从 comps 列表里删元素
+
+            // 现场追凶：白银的私有标签被谁撕掉，打一行调用者
+            if (owner == null && t.def == ThingDefOf.Silver)
+            {
+                try
+                {
+                    Pawn prev = null;
+                    try { prev = OwnerOf(t); } catch { }
+                    if (prev != null)
+                    {
+                        string who = "?";
+                        try
+                        {
+                            var fr = new System.Diagnostics.StackTrace().GetFrame(1);
+                            if (fr != null)
+                            {
+                                var md = fr.GetMethod();
+                                who = (md.DeclaringType != null ? md.DeclaringType.Name : "?") + "." + md.Name;
+                            }
+                        }
+                        catch { }
+                        DevLog.Msg("[TAG-CLEAR] 银堆 ×" + t.stackCount + " 原主人=" + prev.LabelShort
+                            + " 被 " + who + " 撕掉标签");
+                    }
+                }
+                catch { }
+            }
+
             if (owner == null && t.def == ThingDefOf.Silver
                 && t.ParentHolder is Pawn_InventoryTracker it && it.pawn != null)
             {
