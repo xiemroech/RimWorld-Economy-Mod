@@ -94,7 +94,8 @@ namespace DshEconomy
                 Disallow("Chunks");
                 Disallow("Plants");
                 Disallow("Buildings");
-                s.Priority = StoragePriority.Preferred;
+                // 不再强行改写优先级：玩家在「存储设置」里调成什么就保持什么。
+                // 以前这里每帧级地写回 Preferred，导致手动调高又被压回去。
 
                 if (!loggedFilter)
                 {

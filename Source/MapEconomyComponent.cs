@@ -145,6 +145,8 @@ namespace DshEconomy
         // 当日劳动 tick（按天清零），用来算"超过 8 小时"的满意度惩罚
         private int dailyWorkDay = -1;
         private Dictionary<Pawn, float> dailyWork = new Dictionary<Pawn, float>();
+        private List<Pawn> dailyWorkPawns = new List<Pawn>();
+        private List<float> dailyWorkValues = new List<float>();
 
         private static int DayIndex
         {
@@ -165,12 +167,29 @@ namespace DshEconomy
             dailyWork[p] = cur + ticks;
         }
 
-        /// <summary>今天这个人干了多少小时（1 小时 = 2500 tick）。</summary>
+        [System.ThreadStatic] private static bool computingDailyHours;
+
+        /// <summary>今天这个人干了多少小时（1 小时 = 2500 tick）。含正在干、还没结算的那段。</summary>
         public float DailyWorkHours(Pawn p)
         {
-            if (p == null || dailyWork == null || dailyWorkDay != DayIndex) return 0f;
-            float t;
-            return dailyWork.TryGetValue(p, out t) ? t / 2500f : 0f;
+            if (p == null) return 0f;
+
+            // 防递归：算"进行中工时"要读 WorkSpeedGlobal 属性，而这个属性本身
+            // 可能又经过满意度加成（最终又回到这里）。一旦重入就返回已结算部分，
+            // 宁可少算一段，也不能让栈无限增长把游戏打崩。
+            if (computingDailyHours) return 0f;
+            computingDailyHours = true;
+            try
+            {
+                float t = 0f;
+                if (dailyWork != null && dailyWorkDay == DayIndex) dailyWork.TryGetValue(p, out t);
+                t += EconomyLaborSessions.PendingWorkTicks(p);
+                return t / 2500f;
+            }
+            finally
+            {
+                computingDailyHours = false;
+            }
         }
 
         public void ClearDailyWork()
@@ -456,16 +475,20 @@ namespace DshEconomy
             tradeSellRatio = s.tradeSellRatio;
         }
 
+        // 二分用：bit1=银锭 bit2=250tick块 bit3=劳动 bit4=尾部(守卫/工资/满意度/动荡)
+        private const int TickMask = 15;
+
         public override void MapComponentTick()
         {
-            if (!silverReapplied)            {
+            
+            if ((TickMask & 1) != 0 && !silverReapplied)            {
                 silverReapplied = true;
                 EconomySilverGraphic.Apply();
             }
             int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
 
             // 这两件事以前每 tick 无条件跑；改成每 250 tick 同步一次，省掉 tick 的固定开销
-            if (now - lastSettingsSync >= 250)
+            if ((TickMask & 2) != 0 && now - lastSettingsSync >= 250)
             {
                 lastSettingsSync = now;
                 Refresh();
@@ -509,7 +532,7 @@ namespace DshEconomy
             }
 
             // 劳动计量：每 250 tick 对一次账（换活才结算），不再 patch 全场热路径
-            if (!EconomyLaborSessions.Active) AccumulateLaborLegacy(now);
+            if ((TickMask & 4) == 0) { } else if (!EconomyLaborSessions.Active) AccumulateLaborLegacy(now);
             else if (now - lastLaborFlush >= 250)
             {
                 lastLaborFlush = now;
@@ -575,8 +598,10 @@ namespace DshEconomy
             }
             GuardPublicFood(now);
             PayWages(now);
+            if ((TickMask & 8) != 0) {
             SatisfactionTick(now);
             EconomyUnrest.Tick(map, 60);
+            }
         }
 
         /// <summary>
@@ -989,6 +1014,35 @@ namespace DshEconomy
                 for (int i = 0; i < workHourKeys.Count && i < workHourValues.Count; i++)
                 {
                     workHours[workHourKeys[i]] = workHourValues[i];
+                }
+            }
+            // 今日工时：工资与满意度都靠它，必须存档，否则读档就从 0 开始
+            Scribe_Values.Look(ref dailyWorkDay, "dsh_dailyWorkDay", -1);
+            if (Scribe.mode == LoadSaveMode.Saving)
+            {
+                dailyWorkPawns.Clear();
+                dailyWorkValues.Clear();
+                if (dailyWork != null)
+                {
+                    foreach (KeyValuePair<Pawn, float> kv in dailyWork)
+                    {
+                        if (kv.Key == null) continue;
+                        dailyWorkPawns.Add(kv.Key);
+                        dailyWorkValues.Add(kv.Value);
+                    }
+                }
+            }
+            Scribe_Collections.Look(ref dailyWorkPawns, "dsh_dailyWorkPawns", LookMode.Reference);
+            Scribe_Collections.Look(ref dailyWorkValues, "dsh_dailyWorkValues", LookMode.Value);
+            if (Scribe.mode == LoadSaveMode.LoadingVars || Scribe.mode == LoadSaveMode.PostLoadInit)
+            {
+                if (dailyWorkPawns == null) dailyWorkPawns = new List<Pawn>();
+                if (dailyWorkValues == null) dailyWorkValues = new List<float>();
+                dailyWork = new Dictionary<Pawn, float>();
+                for (int i = 0; i < dailyWorkPawns.Count && i < dailyWorkValues.Count; i++)
+                {
+                    if (dailyWorkPawns[i] == null) continue;
+                    dailyWork[dailyWorkPawns[i]] = dailyWorkValues[i];
                 }
             }
 

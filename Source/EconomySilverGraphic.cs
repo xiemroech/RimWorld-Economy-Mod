@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -17,6 +17,19 @@ namespace DshEconomy
 
         /// <summary>我们构造好的银锭图形，ThingDef.graphic 的 getter 补丁会直接返回它。</summary>
         public static Graphic Cached;
+
+        /// <summary>贴图没加载成功的判定（null / 无材质 / BadTexture）。</summary>
+        private static bool IsBad(Graphic g)
+        {
+            try
+            {
+                if (g == null) return true;
+                if (g.MatSingle == null || g.MatSingle.mainTexture == null) return true;
+                if (g.MatSingle.mainTexture.name == "BadTexture") return true;
+                return false;
+            }
+            catch { return true; }
+        }
 
         public static void Apply()
         {
@@ -41,11 +54,18 @@ namespace DshEconomy
                     TexPath, ShaderDatabase.Cutout, silver.graphicData.drawSize, Color.white);
 
                 // 运行时动态加载有时会拿到 BadTexture，退回单图 Graphic_Single
-                if (made == null || made.MatSingle == null || made.MatSingle.mainTexture == null
-                    || made.MatSingle.mainTexture.name == "BadTexture")
+                if (IsBad(made))
                 {
                     made = GraphicDatabase.Get<Graphic_Single>(
                         TexPath, ShaderDatabase.Cutout, silver.graphicData.drawSize, Color.white);
+                }
+
+                // 两种都拿不到就保持原版图标，不要把坏 graphic 塞进去——
+                // 坏 graphic 会在渲染线程上炸掉整个游戏（表现为进图就闪退）。
+                if (IsBad(made))
+                {
+                    DevLog.Msg("[DSH-ECONOMY] 银锭贴图不可用，保持原版图标");
+                    return;
                 }
                 silver.graphic = made;
                 Cached = made;

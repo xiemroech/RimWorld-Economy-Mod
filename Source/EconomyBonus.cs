@@ -88,18 +88,17 @@ namespace DshEconomy
             Scribe_Values.Look(ref autoPay, "autoPay", true);
             Scribe_Values.Look(ref amount, "amount", 50f);
             Scribe_Values.Look(ref recipients, "recipients", 3);
-            Scribe_Collections.Look(ref legacyRecipients, "recipients", LookMode.Reference);
             Scribe_Collections.Look(ref groups, "groups", LookMode.Deep);
             Scribe_Values.Look(ref activeIndex, "activeIndex", 0);
 
-            if (groups == null) groups = new List<BonusGroup>();
-            if (groups.Count == 0)
-            {
-                BonusGroup g = new BonusGroup { name = "组1" };
-                if (legacyRecipients != null) g.members.AddRange(legacyRecipients);
-                groups.Add(g);
-            }
+            // 旧档里曾用 "recipients" 这个同名 label 存过一个 Pawn 列表，
+            // 与上面的 int 同名会让存档写出两个 <recipients> 节点，读档时解不出引用
+            // （日志：Could not resolve reference to object with loadID 0 of type Verse.Pawn）。
+            // 迁移逻辑已无用，直接丢弃，避免继续污染存档。
             legacyRecipients = null;
+
+            if (groups == null) groups = new List<BonusGroup>();
+            if (groups.Count == 0) groups.Add(new BonusGroup { name = "组1" });
         }
     }
 

@@ -17,9 +17,19 @@ namespace DshEconomy
     {
         public static bool Patched;
 
+        /// <summary>诊断开关：true 时不挂任何 Harmony 补丁，用来判断"栈溢出是不是补丁造成的"。</summary>
+        public const bool DiagnosticNoPatches = false;
+
         public static void Apply()
         {
             if (Patched) return;
+
+            if (DiagnosticNoPatches)
+            {
+                Log.Message("[DSH-ECONOMY] 诊断构建：所有 Harmony 补丁已停用（只保留组件逻辑）");
+                Patched = true;
+                return;
+            }
 
             Harmony harmony = new Harmony("dsh.economy.tags");
 

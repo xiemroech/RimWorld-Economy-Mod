@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using Verse;
 using Verse.AI;
@@ -34,6 +34,23 @@ namespace DshEconomy
         private static readonly Dictionary<Pawn, LaborSession> open = new Dictionary<Pawn, LaborSession>();
 
         public static bool Active = true;
+
+        /// <summary>
+        /// 这个人当前这段"还没结算"的劳动折算成多少 tick（已乘工作速度）。
+        /// 劳动账本是"一件活干完才记一笔"，所以正在干的那段如果不算进来，
+        /// 面板上就会一直显示"今日 0.5 小时"这种偏小的数。
+        /// </summary>
+        public static float PendingWorkTicks(Pawn p)
+        {
+            if (p == null) return 0f;
+            LaborSession s;
+            if (!open.TryGetValue(p, out s) || s == null) return 0f;
+            int d = Now - s.startTick;
+            if (d <= 0) return 0f;
+            if (d > MaxSessionTicks) d = MaxSessionTicks;
+            float raw = d * EconomyWages.WorkRate(p);
+            return raw > 0f ? raw : 0f;
+        }
 
         /// <summary>每 250 tick 调一次。force=true 时把进行中的都结一段（发薪前用）。</summary>
         public static void Reconcile(Map map, bool force = false)
@@ -162,9 +179,86 @@ namespace DshEconomy
             get { return open.Count; }
         }
 
+        // ---------------- 存档 ----------------
+        // open 是静态字典，游戏读档不会自动带上它，
+        // 于是"今天干了多久"每次进档都从 0 开始。这里把它写进全局存档。
+
+        private static List<Pawn> scPawns = new List<Pawn>();
+        private static List<int> scStart = new List<int>();
+        private static List<JobDef> scDef = new List<JobDef>();
+        private static List<WorkTypeDef> scType = new List<WorkTypeDef>();
+
+        /// <summary>由 <see cref="EconomyLaborSave"/> 在存档时调用。</summary>
+        public static void ExposeData()
+        {
+            if (Scribe.mode == LoadSaveMode.Saving)
+            {
+                scPawns.Clear();
+                scStart.Clear();
+                scDef.Clear();
+                scType.Clear();
+                foreach (KeyValuePair<Pawn, LaborSession> kv in open)
+                {
+                    Pawn p = kv.Key;
+                    LaborSession s = kv.Value;
+                    if (p == null || s == null) continue;
+                    scPawns.Add(p);
+                    scStart.Add(s.startTick);
+                    scDef.Add(s.def);
+                    scType.Add(s.workType);
+                }
+            }
+
+            Scribe_Collections.Look(ref scPawns, "dsh_laborPawns", LookMode.Reference);
+            Scribe_Collections.Look(ref scStart, "dsh_laborStart", LookMode.Value);
+            Scribe_Collections.Look(ref scDef, "dsh_laborDef", LookMode.Def);
+            Scribe_Collections.Look(ref scType, "dsh_laborType", LookMode.Def);
+
+            if (scPawns == null) scPawns = new List<Pawn>();
+            if (scStart == null) scStart = new List<int>();
+            if (scDef == null) scDef = new List<JobDef>();
+            if (scType == null) scType = new List<WorkTypeDef>();
+
+            if (Scribe.mode == LoadSaveMode.LoadingVars)
+            {
+                open.Clear();
+                int n = scPawns.Count;
+                for (int i = 0; i < n; i++)
+                {
+                    Pawn p = scPawns[i];
+                    if (p == null) continue;
+                    if (i >= scStart.Count) break;
+                    open[p] = new LaborSession
+                    {
+                        pawn = p,
+                        job = null,                       // Job 实例不可序列化，读档后按"换了活"结算上一段
+                        def = i < scDef.Count ? scDef[i] : null,
+                        workType = i < scType.Count ? scType[i] : null,
+                        startTick = scStart[i]
+                    };
+                }
+            }
+        }
+
         private static int Now
         {
             get { return Find.TickManager != null ? Find.TickManager.TicksGame : 0; }
+        }
+    }
+
+    /// <summary>
+    /// 全局存档载体：把"正在进行的劳动会话"写进游戏存档（GameComponent 是全局的，
+    /// 不随地图销毁，读档后还能把每人的 startTick 还原回去）。
+    /// </summary>
+    public class EconomyLaborSave : GameComponent
+    {
+        public EconomyLaborSave(Game game) { }
+
+        public override void ExposeData()
+        {
+            base.ExposeData();
+            EconomyLaborSessions.ExposeData();
+            EconomyWorkTypes.ExposeData();
         }
     }
 }

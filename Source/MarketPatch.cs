@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
@@ -92,6 +92,9 @@ namespace DshEconomy
             // 现在一律不碰原版价格：价格只在物品信息（右下角）里显示。
             HookHideMarketItems(harmony);
             HookPriceBoard(harmony);
+            HookMarketHaulBoost(harmony);
+            try { BedRestOverride.Apply(harmony); }
+            catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 卧床判定独占失败：" + e.Message); }
             MethodInfo target = AccessTools.Method(typeof(ThingOwner<Thing>), "TryAdd", new[] { typeof(Thing), typeof(bool) });
             if (target == null)
             {
@@ -1293,6 +1296,97 @@ namespace DshEconomy
         }
 
         /// <summary>摊位里的货物不画出来（跟箱子一样：只看得到箱子贴图）。</summary>
+        /// <summary>
+        /// 给市场摊位一个"看不见的额外优先级"。
+        /// 原版 StoreUtility.TryFindBestBetterStoreCellFor 只认「严格更高」的格子，
+        /// 所以当摊位和仓库同为最高级时，永远轮不到摊位。
+        /// 这里在"原版已经找不到更好格子"之后，再单独挑一个市场摊位的空格兜底，
+        /// 相当于把摊位当成「比当前高一级」，但不改动任何可见的优先级数值。
+        /// </summary>
+        private static void HookMarketHaulBoost(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                MethodInfo m = AccessTools.Method(typeof(StoreUtility), "TryFindBestBetterStoreCellFor", new[]
+                {
+                    typeof(Thing), typeof(Pawn), typeof(Map), typeof(StoragePriority),
+                    typeof(Faction), typeof(IntVec3).MakeByRefType(), typeof(bool)
+                });
+                if (m == null)
+                {
+                    DevLog.Msg("[DSH-ECONOMY] 市场搬运加成：没找到 TryFindBestBetterStoreCellFor");
+                    return;
+                }
+                harmony.Patch(m, prefix: new HarmonyMethod(
+                    typeof(MarketPatch).GetMethod(nameof(MarketHaulBoostPrefix), BindingFlags.Static | BindingFlags.NonPublic)));
+                DevLog.Msg("[DSH-ECONOMY] 市场搬运加成：已挂 TryFindBestBetterStoreCellFor");
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[DSH-ECONOMY] 市场搬运加成挂载失败：" + e.Message);
+            }
+        }
+
+        /// <summary>原版找不到"更好格"时，用这个把货兜到市场摊位。</summary>
+        private static bool MarketHaulBoostPrefix(Thing t, Pawn carrier, Map map, StoragePriority currentPriority,
+            Faction faction, out IntVec3 foundCell, bool needAccurateResult, ref bool __result)
+        {
+            foundCell = IntVec3.Invalid;
+            try
+            {
+                if (t == null || carrier == null || map == null) return true;
+                if (!t.Spawned || t.def == null) return true;
+
+                // 已经在摊位里了，别再折腾
+                SlotGroup here = map.haulDestinationManager.SlotGroupAt(t.Position);
+                if (here != null && here.parent is Building_Market) return true;
+
+                // 只从「仓库里」往摊位搬：地上的散货、地块都不抢，
+                // 否则摊位会变成吸尘器，把地图上所有东西都吸过来。
+                if (here == null) return true;
+                if (!carrier.CanReach(t, PathEndMode.ClosestTouch, Danger.Deadly)) return true;
+
+                IntVec3 cell;
+                if (!TryFindMarketCell(t, carrier, map, out cell)) return true;
+
+                foundCell = cell;
+                __result = true;
+                return false;
+            }
+            catch (System.Exception)
+            {
+                return true;
+            }
+        }
+
+        /// <summary>在所有市场摊位里挑一个最近、能收、有位置的格子。</summary>
+        private static bool TryFindMarketCell(Thing t, Pawn carrier, Map map, out IntVec3 cell)
+        {
+            cell = IntVec3.Invalid;
+            List<Building> all = map.listerBuildings.allBuildingsColonist;
+            float best = float.MaxValue;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Building_Market m = all[i] as Building_Market;
+                if (m == null || !m.Spawned || m.Destroyed) continue;
+                SlotGroup g = m.GetSlotGroup();
+                if (g == null || g.CellsList == null) continue;
+
+                StorageSettings st = m.GetStoreSettings();
+                if (st == null || !st.AllowedToAccept(t)) continue;
+
+                List<IntVec3> cells = g.CellsList;
+                for (int c = 0; c < cells.Count; c++)
+                {
+                    IntVec3 cand = cells[c];
+                    if (!StoreUtility.IsGoodStoreCell(cand, map, t, carrier, carrier.Faction)) continue;
+                    float d = cand.DistanceToSquared(t.Position);
+                    if (d < best) { best = d; cell = cand; }
+                }
+            }
+            return cell.IsValid;
+        }
+
         private static void HookHideMarketItems(HarmonyLib.Harmony harmony)        {
             try
             {

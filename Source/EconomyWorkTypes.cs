@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using RimWorld;
@@ -25,6 +25,56 @@ namespace DshEconomy
 
         /// <summary>读档/换图时清掉旧 Pawn 记录。</summary>
         public static void ResetRuntime() { tracked.Clear(); }
+
+        // ---------------- 存档 ----------------
+        // tracked 只活在内存里，读档就空 → 小人的活没有工作类型 →
+        // 工资/产出统计按"非工作来源"权重 1.0 算，和存档前对不上。
+        // 所以把整张表（人 / JobDef / 工作类型）一起写进存档。
+
+        private static List<Pawn> scPawns = new List<Pawn>();
+        private static List<JobDef> scJobs = new List<JobDef>();
+        private static List<WorkTypeDef> scTypes = new List<WorkTypeDef>();
+
+        public static void ExposeData()
+        {
+            if (Scribe.mode == LoadSaveMode.Saving)
+            {
+                scPawns.Clear();
+                scJobs.Clear();
+                scTypes.Clear();
+                foreach (KeyValuePair<Pawn, Entry> kv in tracked)
+                {
+                    if (kv.Key == null) continue;
+                    scPawns.Add(kv.Key);
+                    scJobs.Add(kv.Value.job);
+                    scTypes.Add(kv.Value.workType);
+                }
+            }
+
+            Scribe_Collections.Look(ref scPawns, "dsh_wtPawns", LookMode.Reference);
+            Scribe_Collections.Look(ref scJobs, "dsh_wtJobs", LookMode.Def);
+            Scribe_Collections.Look(ref scTypes, "dsh_wtTypes", LookMode.Def);
+
+            if (scPawns == null) scPawns = new List<Pawn>();
+            if (scJobs == null) scJobs = new List<JobDef>();
+            if (scTypes == null) scTypes = new List<WorkTypeDef>();
+
+            if (Scribe.mode == LoadSaveMode.LoadingVars)
+            {
+                tracked.Clear();
+                int n = scPawns.Count;
+                for (int i = 0; i < n; i++)
+                {
+                    Pawn p = scPawns[i];
+                    if (p == null) continue;
+                    tracked[p] = new Entry
+                    {
+                        job = i < scJobs.Count ? scJobs[i] : null,
+                        workType = i < scTypes.Count ? scTypes[i] : null
+                    };
+                }
+            }
+        }
 
         public static void Record(Pawn pawn, JobDef job, WorkTypeDef workType)
         {

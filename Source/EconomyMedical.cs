@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using HarmonyLib;
 using RimWorld;
@@ -34,6 +34,61 @@ namespace DshEconomy
 
     public static class EconomyMedical
     {
+        /// <summary>
+        /// 医疗这一类的公有化程度（0~1）。医疗费按"私有份额"收：
+        /// 公有 100% = 全免费，公有 0% = 全额自付，中间按比例。
+        /// </summary>
+        public static float PublicShare(Map map)
+        {
+            EconomyCategoryDef med = DefDatabase<EconomyCategoryDef>.GetNamedSilentFail("DshEco_Medicine");
+            MapEconomyComponent c = map != null ? map.GetComponent<MapEconomyComponent>() : null;
+            if (med == null || c == null) return 0f;
+            return Mathf.Clamp01(c.GetPublicization(med) / 100f);
+        }
+
+        /// <summary>
+        /// 公费医疗的"报销比例"（0~1）。用三次方而不是线性：
+        /// 公有化 50% 只报 12.5%，80% 报 51%，95% 报 86%，100% 全报。
+        /// ——低档几乎没优惠（不会"50% 就敢随便躺"），但又没有 99/100 的断崖。
+        /// </summary>
+        public static float SubsidyRate(Map map)
+        {
+            MapEconomyComponent mc = map != null ? map.GetComponent<MapEconomyComponent>() : null;
+            if (mc != null && mc.medical != null && !mc.medical.enabled) return 1f;   // 收费开关关着 = 全报
+            float pub = PublicShare(map);
+            if (pub <= 0f) return 0f;
+            if (pub >= 1f) return 1f;
+            return pub * pub * pub;
+        }
+
+        /// <summary>把"标价"折成病人实际要付的钱。返回 0 表示全报。</summary>
+        public static int ChargeAfterSubsidy(Map map, int listPrice)
+        {
+            if (listPrice <= 0) return 0;
+            float pay = 1f - SubsidyRate(map);
+            if (pay <= 0.001f) return 0;
+            return Mathf.Max(1, Mathf.RoundToInt(listPrice * pay));
+        }
+
+        /// <summary>
+        /// 什么样的伤才值得躺床。公有化 50% = 原版 8；越公有越愿意躺（100% → 0.1）；
+        /// 越私有越不愿意躺（0% → 60，基本不躺）。
+        /// </summary>
+        public static float RestThreshold(Map map)
+        {
+            float pub = PublicShare(map);
+            if (pub >= 0.5f) return Mathf.Lerp(8f, 0.1f, (pub - 0.5f) * 2f);
+            return Mathf.Lerp(60f, 8f, pub * 2f);
+        }
+
+        /// <summary>流血到多少才值得躺床，口径与 RestThreshold 一致。</summary>
+        public static float BloodLossThreshold(Map map)
+        {
+            float pub = PublicShare(map);
+            if (pub >= 0.5f) return Mathf.Lerp(0.35f, 0.05f, (pub - 0.5f) * 2f);
+            return Mathf.Lerp(0.9f, 0.35f, pub * 2f);
+        }
+
         /// <summary>治疗用掉的医疗物品，按价格管道的现价记到病人头上。</summary>
         public static void ChargeMedicine(Pawn doctor, Pawn patient, Thing medicine)
         {
@@ -48,10 +103,7 @@ namespace DshEconomy
             if (price <= 0)
             {
                 DevLog.Msg("[MED] " + patient.LabelShort + " 用的 " + medicine.def.LabelCap
-                    + " 现价为 0（价值 " + EconomyValue.Of(medicine.def, map).ToString("0.#")
-                    + " × 系数 " + EconomyPrice.CombinedFactor(medicine.def, map).ToString("0.00")
-                    + " × 银价 " + EconomyPrice.SilverIndex(map).ToString("0.00")
-                    + "），免费，不结算。设社会化 <100% 才有药费。");
+                    + " 现价为 0，免费，不结算。");
                 return;
             }
 

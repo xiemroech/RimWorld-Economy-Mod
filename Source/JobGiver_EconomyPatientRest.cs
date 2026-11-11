@@ -23,7 +23,7 @@ namespace DshEconomy
                     && pawn.jobs.curJob.def == JobDefOf.LayDown) return null;
 
                 bool free = IsFreeCare(pawn);
-                if (!NeedsRest(pawn, free)) return null;
+                if (!NeedsRest(pawn)) return null;
                 if (!CanAffordCare(pawn, free)) return null;
 
                 int now = Find.TickManager.TicksGame;
@@ -42,28 +42,30 @@ namespace DshEconomy
             catch { return null; }
         }
 
-        private static bool NeedsRest(Pawn p, bool free)
+        private static bool NeedsRest(Pawn p)
         {
+            float hurtAt = EconomyMedical.RestThreshold(p.Map);
+            float bleedAt = EconomyMedical.BloodLossThreshold(p.Map);
             List<Hediff> hs = p.health.hediffSet.hediffs;
             for (int i = 0; i < hs.Count; i++)
             {
                 Hediff h = hs[i];
-                if (h is Hediff_Injury && !h.IsPermanent() && h.Severity >= (free ? 0.1f : 8f)) return true;
-                if (h.def.defName == "BloodLoss" && h.Severity >= (free ? 0.05f : 0.35f)) return true;
+                if (h is Hediff_Injury && !h.IsPermanent() && h.Severity >= hurtAt) return true;
+                if (h.def.defName == "BloodLoss" && h.Severity >= bleedAt) return true;
                 if (h.def.defName == "WoundInfection" || h.def.defName.StartsWith("Infection")) return true;
             }
             return false;
         }
 
-        /// <summary>社会化高（免费）就都躺；否则只有满足“付得起 + 伤得重”才躺。</summary>
         private static bool IsFreeCare(Pawn p)
         {
             MapEconomyComponent comp = p.Map.GetComponent<MapEconomyComponent>();
             if (comp == null) return true;
             if (comp.medical != null && !comp.medical.enabled) return true;
-            return MedicalFree(p);
+            EconomyCategoryDef med = DefDatabase<EconomyCategoryDef>.GetNamedSilentFail("DshEco_Medicine");
+            if (med == null) return false;
+            return comp.GetPublicization(med) >= 100f;
         }
-
         private static bool CanAffordCare(Pawn p, bool free)
         {
             MapEconomyComponent comp = p.Map.GetComponent<MapEconomyComponent>();
@@ -73,15 +75,6 @@ namespace DshEconomy
                 ? UnityEngine.Mathf.RoundToInt(comp.medical.baseFee)
                 : 0;
             return EconomyBank.PrivateSilver(p.Map, p) >= price;
-        }
-
-        private static bool MedicalFree(Pawn p)
-        {
-            EconomyCategoryDef med = DefDatabase<EconomyCategoryDef>.GetNamedSilentFail("DshEco_Medicine");
-            if (med == null) return false;
-            MapEconomyComponent c = p.Map.GetComponent<MapEconomyComponent>();
-            if (c == null) return false;
-            return c.GetPublicization(med) >= 100f;
         }
 
         private static Building_Bed FindBed(Pawn p)
