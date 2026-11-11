@@ -111,9 +111,14 @@ namespace DshEconomy
                 }
                 if (got < need) return null;
 
+                // 工位被占着就先不派（否则 StartJob 之后预约失败会刷红字、人也会来回跑）
+                if (!p.CanReserveAndReach(bench, PathEndMode.InteractionCell, Danger.Deadly, 1, -1)) return null;
+
                 Job job = JobMaker.MakeJob(JobDefOf.DoBill, bench);
                 job.bill = bill;
-                job.haulMode = HaulMode.ToCellStorage;
+                // 注意：不能设 haulMode —— DoBill 不是搬运任务，
+                // 设了会让 JobDriver_DoBill 走进"放置搬运物"的 toil，报
+                // "tried to place hauled thing in cell but is not hauling anything"，还会把预约搞乱。
                 job.targetQueueB = new List<LocalTargetInfo>();
                 job.countQueue = new List<int>();
                 for (int i = 0; i < picked.Count; i++)
