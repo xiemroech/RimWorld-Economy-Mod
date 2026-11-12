@@ -71,7 +71,8 @@ namespace DshEconomy
 
         /// <summary>
         /// 原版的 DoBill 判定在 1.7 里对这张账单始终返回 null（各项条件都是 True，却派不出）。
-        /// 不再依赖它：自己找原料、自己拼一个标准的 DoBill 任务，格式与原版一致。
+        /// 硬拼出来的 DoBill 任务又会同一 tick 反复失败重建（"started 10 jobs in one tick"），
+        /// 人卡在原地不睡不吃、进度永远 0。所以改成我们自己的任务：JobDriver_SilverWork。
         /// </summary>
         internal static Job BuildJob(Pawn p, Thing bench)
         {
@@ -90,42 +91,29 @@ namespace DshEconomy
                 if (bill == null) return null;
                 if (bill.recipe.ingredients == null || bill.recipe.ingredients.Count == 0) return null;
 
+                // 原料得够（不够不派，免得人走过去干等）
                 IngredientCount ing = bill.recipe.ingredients[0];
-                int need = (int)ing.count;
+                int need = UnityEngine.Mathf.RoundToInt(ing.count);
                 if (need <= 0) return null;
-
-                Map map = bench.Map;
-                List<ThingCount> picked = new List<ThingCount>();
                 int got = 0;
-                foreach (Thing t in map.listerThings.ThingsInGroup(ThingRequestGroup.HaulableEver))
+                foreach (Thing t in bench.Map.listerThings.ThingsInGroup(ThingRequestGroup.HaulableEver))
                 {
                     if (got >= need) break;
                     if (t == null || t.Destroyed || !t.Spawned) continue;
                     if (!ing.filter.Allows(t.def)) continue;
                     if (t.IsForbidden(p)) continue;
-                    if (!p.CanReach(t, PathEndMode.ClosestTouch, Danger.Deadly)) continue;
-                    int take = UnityEngine.Mathf.Min(need - got, t.stackCount);
-                    if (take <= 0) continue;
-                    picked.Add(new ThingCount(t, take));
-                    got += take;
+                    got += t.stackCount;
                 }
                 if (got < need) return null;
 
-                // 工位被占着就先不派（否则 StartJob 之后预约失败会刷红字、人也会来回跑）
+                // 工位被占着就先不派
                 if (!p.CanReserveAndReach(bench, PathEndMode.InteractionCell, Danger.Deadly, 1, -1)) return null;
 
-                Job job = JobMaker.MakeJob(JobDefOf.DoBill, bench);
+                JobDef def = DefDatabase<JobDef>.GetNamedSilentFail("DshEco_SilverWork");
+                if (def == null) return null;
+
+                Job job = JobMaker.MakeJob(def, bench);
                 job.bill = bill;
-                // 注意：不能设 haulMode —— DoBill 不是搬运任务，
-                // 设了会让 JobDriver_DoBill 走进"放置搬运物"的 toil，报
-                // "tried to place hauled thing in cell but is not hauling anything"，还会把预约搞乱。
-                job.targetQueueB = new List<LocalTargetInfo>();
-                job.countQueue = new List<int>();
-                for (int i = 0; i < picked.Count; i++)
-                {
-                    job.targetQueueB.Add(new LocalTargetInfo(picked[i].Thing));
-                    job.countQueue.Add(picked[i].Count);
-                }
                 job.count = 1;
                 return job;
             }
