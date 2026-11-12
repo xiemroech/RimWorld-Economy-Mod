@@ -302,8 +302,7 @@ namespace DshEconomy
         /// <summary>????????????250 tick ??????</summary>
         private class PawnRow
         {
-            public List<Thing> owned;
-            public List<Thing> carried;
+            public List<Thing> owned;            public List<Thing> carried;
             public float value;
             public float mass;
             public float free;
@@ -318,6 +317,26 @@ namespace DshEconomy
 
         private static readonly Dictionary<Pawn, PawnRow> privRows = new Dictionary<Pawn, PawnRow>();
         private static readonly Dictionary<Pawn, List<Thing>> privIndex = new Dictionary<Pawn, List<Thing>>();
+
+        /// <summary>找这个人名下的第一个私有仓库建筑（用来把镜头跳过去）。</summary>
+        private static Thing FirstPrivateStorage(Pawn p, Map map)
+        {
+            if (p == null || map == null) return null;
+            try
+            {
+                List<SlotGroup> groups = map.haulDestinationManager.AllGroupsListForReading;
+                for (int i = 0; i < groups.Count; i++)
+                {
+                    SlotGroup g = groups[i];
+                    if (g == null || g.parent == null) continue;
+                    if (EconomyPrivateStorageBehavior.OwnerOfGroup(g) != p) continue;
+                    Thing holder = g.parent as Thing;
+                    if (holder != null) return holder;
+                }
+            }
+            catch { }
+            return null;
+        }
         private static Map privRowMap;
         private static int privRowTick = -99999;
 
@@ -1018,6 +1037,13 @@ namespace DshEconomy
                 Widgets.Label(new Rect(row.x + 226f, row.y + 4f, 80f, 24f), owned.Count + " 件");
                 Widgets.Label(new Rect(row.x + 292f, row.y + 4f, 80f, 24f), mass.ToString("0.##") + " kg");
                 Widgets.Label(new Rect(row.x + 360f, row.y + 4f, 170f, 24f), storeText);
+                // 点一下"仓库 used/cells"就把镜头跳到他的私有仓库建筑，免得满地图找
+                if (cells > 0 && Widgets.ButtonInvisible(new Rect(row.x + 360f, row.y + 4f, 170f, 24f)))
+                {
+                    Thing box = FirstPrivateStorage(p, map);
+                    if (box != null) CameraJumper.TryJump(box);
+                    else Messages.Message("找不到 " + p.LabelShort + " 的私有仓库建筑", MessageTypeDefOf.RejectInput, false);
+                }
                 Widgets.Label(new Rect(row.x + 500f, row.y + 4f, 52f, 24f), ownedValue.ToString("0.#"));
                 float wf = pr.wf;
                 Widgets.Label(new Rect(row.x + 548f, row.y + 4f, 44f, 24f), "×" + wf.ToString("0.00"));

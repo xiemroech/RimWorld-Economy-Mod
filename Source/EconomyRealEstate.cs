@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using RimWorld;
@@ -24,7 +24,12 @@ namespace DshEconomy
         // 禁止被小人购买的容器（玩家上锁）
         private List<Building> notForSale = new List<Building>();
 
-        // 容器出售总开关（默认关闭）
+        // 明确允许被购买的容器（必须先手动点成"可购买：是"才会进这个表）
+        // 以前只有一个全局开关：点一次"是"就把全图容器都变成可购买，默认值被污染，
+        // 现在改成逐个建筑登记 —— 没登记的一律不卖。
+        private List<Building> forSale = new List<Building>();
+
+        // 旧的全局开关，只留给老存档读取，不再参与判定。
         public bool containerSaleEnabled = false;
 
         /// <summary>把每个存放组的归属打出来，用于确认"公共箱子到底被谁认领了"。</summary>
@@ -353,16 +358,27 @@ namespace DshEconomy
         {
             EconomyRealEstate inst = Inst;
             if (inst == null || b == null) return false;
-            if (!inst.containerSaleEnabled) return false;   // 默认不出售容器
-            return !inst.notForSale.Contains(b);
+            if (inst.notForSale != null && inst.notForSale.Contains(b)) return false;
+            // 只有被手动点成"可购买：是"的这一个建筑才卖，其余默认不卖
+            return inst.forSale != null && inst.forSale.Contains(b);
         }
 
         public static void SetForSale(Building b, bool sale)
         {
             EconomyRealEstate inst = Inst;
             if (inst == null || b == null) return;
-            if (sale) inst.notForSale.Remove(b);
-            else if (!inst.notForSale.Contains(b)) inst.notForSale.Add(b);
+            if (inst.forSale == null) inst.forSale = new List<Building>();
+            if (inst.notForSale == null) inst.notForSale = new List<Building>();
+            if (sale)
+            {
+                inst.notForSale.Remove(b);
+                if (!inst.forSale.Contains(b)) inst.forSale.Add(b);
+            }
+            else
+            {
+                inst.forSale.Remove(b);
+                if (!inst.notForSale.Contains(b)) inst.notForSale.Add(b);
+            }
         }
 
         public static Pawn OwnerOfBuilding(Building b)
@@ -486,6 +502,7 @@ namespace DshEconomy
             Scribe_Collections.Look(ref zones, "dsh_zones", LookMode.Reference);
             Scribe_Collections.Look(ref owners, "dsh_zoneOwners", LookMode.Reference);
             Scribe_Collections.Look(ref notForSale, "dsh_notForSale", LookMode.Reference);
+            Scribe_Collections.Look(ref forSale, "dsh_forSale", LookMode.Reference);
             Scribe_Values.Look(ref containerSaleEnabled, "dsh_containerSale", false);
             Scribe_Collections.Look(ref buildings, "dsh_storeBuildings", LookMode.Reference);
             Scribe_Collections.Look(ref buildingOwners, "dsh_storeBuildingOwners", LookMode.Reference);

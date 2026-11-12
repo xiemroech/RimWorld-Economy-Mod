@@ -48,7 +48,6 @@ namespace DshEconomy
             sale.action = delegate
             {
                 bool nowSale = !EconomyRealEstate.IsForSale(storage);
-                    if (nowSale) EconomyRealEstate.ForceEnableSale();
                     EconomyRealEstate.SetForSale(storage, nowSale);
             };
             gizmos.Add(sale);

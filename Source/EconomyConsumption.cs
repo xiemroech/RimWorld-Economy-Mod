@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -340,6 +340,15 @@ namespace DshEconomy
             {
                 goalCatNow = GoalCategory(p, map);
                 if (goalCatNow != null) wantCat = goalCatNow;
+            }
+
+            // 正在攒钱买大件：除了"目标大件"和"吃饭"，其它一律不买。
+            // 否则存款永远涨不上去——每小时顺手买点小东西，攒的钱全被吃掉。
+            bool savingNow = map != null && EconomySavings.SavingForGoal(p, map);
+            if (savingNow && goalCatNow == null && wantCat != "DshEco_Food")
+            {
+                DevLog.Msg("[TRACE] 不买 " + p.LabelShort + "：正在攒钱（目标=" + EconomySavings.TargetOf(p, map) + " 银）");
+                return;
             }
 
             // 自己买的食物还没吃完 → 先吃自己的，不重复买
@@ -1097,8 +1106,15 @@ namespace DshEconomy
                     // 弹药/耗材按堆叠量算——CE 的弹药一堆上百，只买 4 发等于愚公移山。
                     int cap;
                     if (IsPasteDef(def)) cap = 6;
-                    else if (def != null && def.ingestible != null) cap = 4;
+                    else if (def != null && def.ingestible != null) cap = 2;   // 一次最多两份，靠"还差几顿"反复补
                     else cap = Mathf.Clamp(def != null ? def.stackLimit : 75, 1, 150);
+
+                    // 差得不足一顿就别为一顿饭反复下单（每 250 tick 触发一次会积成一堆）
+                    if (need * nutrition < 0.75f) return 0;
+
+                    // 正在攒钱：只补到"不饿"为止，不做囤货
+                    if (p != null && map != null && EconomySavings.SavingForGoal(p, map)) cap = 1;
+
                     return Mathf.Clamp(need, 0, cap);
                 }
                 int n = Mathf.CeilToInt(0.9f / nutrition);

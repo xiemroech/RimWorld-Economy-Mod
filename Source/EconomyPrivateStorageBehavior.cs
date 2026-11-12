@@ -774,17 +774,49 @@ namespace DshEconomy
         }
 
 
-        /// <summary>某人私有仓库的空余率（没有仓库返回 -1）。供界面显示。</summary>
+        /// <summary>
+        /// 某人私有仓库的空余率（没有仓库返回 -1）。供界面显示。
+        /// 只统计"能收下他名下物品"的仓库：某个箱子挂着他的名字、但过滤器根本不收他手里的东西，
+        /// 那几格不算空间，否则会出现"仓库一堆空位，却什么都存不进去"的假读数。
+        /// </summary>
         public static float FreeRatio(Pawn p, Map map, out int used, out int capacity)
         {
             used = 0;
             capacity = 0;
             if (p == null || map == null || map.haulDestinationManager == null) return -1f;
 
+            // 他名下有哪些物品种类（用来判断某个箱子到底算不算"能用的空间"）
+            HashSet<ThingDef> ownedDefs = null;
+            try
+            {
+                List<Thing> mine = EconomyPrivate.OwnedItems(p, map);
+                if (mine != null && mine.Count > 0)
+                {
+                    ownedDefs = new HashSet<ThingDef>();
+                    for (int i = 0; i < mine.Count; i++)
+                    {
+                        Thing t = mine[i];
+                        if (t != null && t.def != null) ownedDefs.Add(t.def);
+                    }
+                }
+            }
+            catch { ownedDefs = null; }
+
             foreach (SlotGroup g in map.haulDestinationManager.AllGroupsListForReading)
             {
                 if (g == null || g.CellsList == null) continue;
                 if (OwnerOfGroup(g) != p) continue;
+
+                // 过滤器收不了他任何一件东西 → 这几格只是"看起来空"，不算容量
+                if (ownedDefs != null && ownedDefs.Count > 0 && g.Settings != null && g.Settings.filter != null)
+                {
+                    bool accepts = false;
+                    foreach (ThingDef d in ownedDefs)
+                    {
+                        if (g.Settings.filter.Allows(d)) { accepts = true; break; }
+                    }
+                    if (!accepts) continue;
+                }
 
                 // mod 容器：容量在 inner ThingOwner 里（12 组 ≠ 1 格），必须按件数算
                 ThingOwner inner = ContainerUtil.InnerOf(g.parent as Building_Storage);
