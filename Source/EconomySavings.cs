@@ -148,12 +148,12 @@ namespace DshEconomy
                 if (cut > 0) Take(p, cut);
             }
 
-            int free = silver - System.Math.Max(MinFreeCash, EconomyPocketMoney.PocketLimit(map) * 2) - Of(p);
+            int free = silver - System.Math.Max(30, EconomyPocketMoney.PocketLimit(map)) - Of(p);
             if (free <= 0) return;
             int need = target - Of(p);
             if (need <= 0) return;
-            int room = System.Math.Max(0, silver - keepCash - Of(p));
-            int add = UnityEngine.Mathf.Clamp(UnityEngine.Mathf.RoundToInt(free * SaveRate), 0, System.Math.Min(need, room));
+            // 存款只能从"超出随身零钱的闲钱"里拿，不能把口袋掏空
+            int add = UnityEngine.Mathf.Clamp(UnityEngine.Mathf.RoundToInt(free * SaveRate), 0, System.Math.Min(need, free));
             Deposit(p, add);
         }
 

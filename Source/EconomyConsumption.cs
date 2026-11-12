@@ -1087,6 +1087,10 @@ namespace DshEconomy
                 if (map != null && p != null)
                 {
                     float target = FoodTargetNutrition(p, map);
+                    bool savingFood = EconomySavings.SavingForGoal(p, map);
+                    // 正在攒钱：只补"一顿不饿"的量，不按存粮目标囤（方案 A）
+                    if (savingFood)
+                        target = StoredNutrition(p, map, true) + 0.9f;
                     float deficit = target - StoredNutrition(p, map, true);
                     if (deficit <= 0.01f) return 0;
                     int need = Mathf.CeilToInt(deficit / nutrition);
@@ -1102,18 +1106,12 @@ namespace DshEconomy
                         need = Mathf.Min(need, allowMeals - haveMeals);
                     }
 
-                    // 单次购买上限：食物按"份"算（别把殖民地口粮一把抓光），
-                    // 弹药/耗材按堆叠量算——CE 的弹药一堆上百，只买 4 发等于愚公移山。
-                    int cap;
-                    if (IsPasteDef(def)) cap = 6;
-                    else if (def != null && def.ingestible != null) cap = 2;   // 一次最多两份，靠"还差几顿"反复补
-                    else cap = Mathf.Clamp(def != null ? def.stackLimit : 75, 1, 150);
+                    // 单次购买上限：按营养折算"两顿"（一顿 0.9）。
+                    // 熟饭 0.9 → 2 份；肉 0.05 → 36 份，正好是两顿的量。
+                    int cap = Mathf.Max(1, Mathf.CeilToInt(2f * 0.9f / nutrition));
 
                     // 差得不足一顿就别为一顿饭反复下单（每 250 tick 触发一次会积成一堆）
                     if (need * nutrition < 0.75f) return 0;
-
-                    // 正在攒钱：只补到"不饿"为止，不做囤货
-                    if (p != null && map != null && EconomySavings.SavingForGoal(p, map)) cap = 1;
 
                     return Mathf.Clamp(need, 0, cap);
                 }

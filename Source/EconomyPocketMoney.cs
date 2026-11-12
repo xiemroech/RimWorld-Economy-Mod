@@ -66,7 +66,9 @@ namespace DshEconomy
 
         public static int PocketLimit(Map map)
         {
-            return Mathf.Max(1, Mathf.RoundToInt(CheapConsumerAverage(map) * PocketMultiplier));
+            float mult = DshEconomyMod.Settings != null ? DshEconomyMod.Settings.pocketMultiplier : PocketMultiplier;
+            if (mult <= 0.01f) return int.MaxValue;   // 0 = 不限，工钱全留在身上
+            return Mathf.Max(1, Mathf.RoundToInt(CheapConsumerAverage(map) * mult));
         }
 
         /// <summary>把超过零钱上限的白银放进自己的仓库。</summary>

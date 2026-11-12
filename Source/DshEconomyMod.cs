@@ -72,6 +72,8 @@ namespace DshEconomy
         public float apparelPublicizeAt = 0.25f;
         /// <summary>购买记录保留天数；0 = 永久。</summary>
         public float purchaseLogDays = 2f;        public List<string> shortageOnlyCats = new List<string>();
+        // 随身零钱上限 = 低价消费品均价 × 这个倍数（0 = 不限制，工钱都留在身上）
+        public float pocketMultiplier = 10f;
         public List<string> shortageOnlyDefs = new List<string>();
 
         public static float DefaultWorkMult(string defName)
@@ -133,6 +135,7 @@ namespace DshEconomy
             Scribe_Values.Look(ref shortageVanillaOnly, "dsh_shortageVanillaOnly", false);
             Scribe_Values.Look(ref apparelPublicizeAt, "dsh_apparelPublicizeAt", 0.25f);
             Scribe_Values.Look(ref purchaseLogDays, "dsh_purchaseLogDays", 2f);
+            Scribe_Values.Look(ref pocketMultiplier, "dsh_pocketMultiplier", 10f);
             Scribe_Collections.Look(ref shortageOnlyCats, "dsh_shortageOnlyCats", LookMode.Value);
             if (shortageOnlyCats == null) shortageOnlyCats = new List<string>();
             Scribe_Collections.Look(ref shortageOnlyDefs, "dsh_shortageOnlyDefs", LookMode.Value);
@@ -501,6 +504,22 @@ namespace DshEconomy
             }
             Widgets.Label(new Rect(view.x + 532f, y + 4f, 900f, 24f),
                 "超过这个天数的记录会自动清掉（0 = 永久保留）。");
+            y += 32f;
+
+            // 随身零钱上限
+            Widgets.Label(new Rect(view.x, y + 4f, 240f, 24f), "随身零钱上限");
+            if (Widgets.ButtonText(new Rect(view.x + 244f, y, 34f, 26f), "-"))
+            {
+                Settings.pocketMultiplier = Mathf.Max(0f, Settings.pocketMultiplier - 1f);
+            }
+            Widgets.Label(new Rect(view.x + 282f, y + 4f, 90f, 24f),
+                Settings.pocketMultiplier <= 0.01f ? "不限" : "×" + Settings.pocketMultiplier.ToString("0"));
+            if (Widgets.ButtonText(new Rect(view.x + 372f, y, 34f, 26f), "+"))
+            {
+                Settings.pocketMultiplier = Mathf.Min(100f, Settings.pocketMultiplier + 1f);
+            }
+            Widgets.Label(new Rect(view.x + 414f, y + 4f, 900f, 24f),
+                "身上最多留 = 低价消费品均价 × 这个倍数，超出的存进私有仓库；0 = 全部留在身上。");
             y += 32f;
 
             if (Settings.debugMode && map != null && comp != null)

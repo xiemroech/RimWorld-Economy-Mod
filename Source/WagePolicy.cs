@@ -416,6 +416,9 @@ namespace DshEconomy
             DevLog.Msg("[WAGE] " + pawn.LabelShort
                 + " 劳动=" + labor.ToString("0") + "tick(" + (labor / GenDate.TicksPerDay).ToString("0.000") + "日)"
                 + " 实际=" + EconomyLedger.GetRawLabor(pawn).ToString("0") + "tick(" + (EconomyLedger.GetRawLabor(pawn) / GenDate.TicksPerDay).ToString("0.000") + "日)"
+                + " 工时表=" + (map.GetComponent<MapEconomyComponent>() != null ? map.GetComponent<MapEconomyComponent>().LaborOf(pawn).ToString("0") : "?")
+                + " 加倍率=" + (map.GetComponent<MapEconomyComponent>() != null ? map.GetComponent<MapEconomyComponent>().RawLaborOf(pawn).ToString("0") : "?")
+                + " 工种倍率=" + (DshEconomyMod.Settings != null ? DshEconomyMod.Settings.GetWorkMult(EconomyWages.WorkTypeOf(pawn)).ToString("0.00") : "?")
                 + " 日值=" + policy.LaborDayValueFor(pawn).ToString("0.#")
                 + " 比例=" + policy.ShareFor(pawn).ToString("0.00")
                 + " 创造=" + produced.ToString("0.#")

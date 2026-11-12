@@ -910,6 +910,16 @@ namespace DshEconomy
             // 发完钱立刻重算满意度，让"三笔缺口"当场反映到进度条上
             EconomySatisfaction.RecomputeAll(map);
 
+            // 发完工资马上存钱：不然钱一到手就被一顿顿买光，永远存不下一分
+            {
+                List<Pawn> savers = map.mapPawns.FreeColonists;
+                for (int si = 0; si < savers.Count; si++)
+                {
+                    try { EconomySavings.Accrue(savers[si], map); }
+                    catch { }
+                }
+            }
+
             // 现场核对：发完这一刻，每个人身上到底有多少银
             List<Pawn> checkPawns = map.mapPawns.FreeColonists;
             for (int ci = 0; ci < checkPawns.Count; ci++)
