@@ -312,9 +312,12 @@ namespace DshEconomy
             public int silver;
             public float wf;
             public float desire;
+            public string plan = "";
+            public Dictionary<Thing, float> prices = new Dictionary<Thing, float>();
         }
 
         private static readonly Dictionary<Pawn, PawnRow> privRows = new Dictionary<Pawn, PawnRow>();
+        private static readonly Dictionary<Pawn, List<Thing>> privIndex = new Dictionary<Pawn, List<Thing>>();
         private static Map privRowMap;
         private static int privRowTick = -99999;
 
@@ -855,7 +858,18 @@ namespace DshEconomy
         private static void DrawPrivate(Rect inRect, MapEconomyComponent comp, Map map, ref Vector2 scroll)
         {
             List<Pawn> colonists = new List<Pawn>(map.mapPawns.FreeColonists);
-            Dictionary<Pawn, List<Thing>> index = EconomyPrivate.BuildIndex(map);
+            // 全图私产索引很贵（要扫所有 Thing），只在 250 tick 的缓存块里重建；
+            // 平时读上一次的缓存，否则开着窗口每帧都在扫全图。
+            bool refresh = privRowMap != map
+                           || Find.TickManager.TicksGame - privRowTick > 250
+                           || privRowTick < 0;
+            if (refresh)
+            {
+                Dictionary<Pawn, List<Thing>> built = EconomyPrivate.BuildIndex(map);
+                privIndex.Clear();
+                foreach (KeyValuePair<Pawn, List<Thing>> kv in built) privIndex[kv.Key] = kv.Value;
+            }
+            Dictionary<Pawn, List<Thing>> index = privIndex;
             // 排序会逐件算 UnitPrice，每帧做一次太贵；改到下面的 250 tick 缓存块里。
 
             int zoneCount = 0;
@@ -867,12 +881,16 @@ namespace DshEconomy
             float contentHeight = 200f + zoneCount * 24f + 60f;
             for (int ci = 0; ci < colonists.Count; ci++)
             {
-                List<Thing> ownedList;
-                if (!index.TryGetValue(colonists[ci], out ownedList)) ownedList = new List<Thing>();
-                List<Thing> carriedList = EconomyPrivate.CarriedPublic(colonists[ci]);
+                PawnRow cached;
+                int ownedN = 0, carriedN = 0;
+                if (privRows.TryGetValue(colonists[ci], out cached) && cached != null)
+                {
+                    ownedN = cached.owned != null ? cached.owned.Count : 0;
+                    carriedN = cached.carried != null ? cached.carried.Count : 0;
+                }
                 contentHeight += 28f;
-                contentHeight += Mathf.Min(6, ownedList.Count) * 22f;
-                contentHeight += Mathf.Min(6, carriedList.Count) * 22f;
+                contentHeight += Mathf.Min(6, ownedN) * 22f;
+                contentHeight += Mathf.Min(6, carriedN) * 22f;
             }
 
             Rect outRect = inRect;
@@ -954,6 +972,16 @@ namespace DshEconomy
                     r.silver = EconomyBank.PrivateSilver(map, cp);
                     r.wf = EconomyConsumption.WealthFactor(cp, map);
                     r.desire = EconomyConsumption.DesireOf(cp, map);
+                    // 提示文字和逐件现价都很贵，一起在这里算好；
+                    // 绘制时只读，否则每帧每人都要重算一遍价格。
+                    try { r.plan = EconomySavings.PlanText(cp, map); } catch { r.plan = ""; }
+                    r.prices.Clear();
+                    for (int k = 0; k < o.Count && k < 8; k++)
+                    {
+                        Thing t2 = o[k];
+                        if (t2 == null || t2.def == null) continue;
+                        r.prices[t2] = EconomyPrice.UnitPrice(t2, map);
+                    }
                     privRows[cp] = r;
                 }
                 privRowMap = map;
@@ -999,7 +1027,7 @@ namespace DshEconomy
                           : (desire <= 0.2f ? new Color(0.7f, 0.85f, 1f) : Color.white);
                 Rect desireRect = new Rect(row.x + 594f, row.y + 4f, 50f, 24f);
                 Widgets.Label(desireRect, (desire * 100f).ToString("0") + "%");
-                TooltipHandler.TipRegion(desireRect, EconomySavings.PlanText(p, map));
+                TooltipHandler.TipRegion(desireRect, pr.plan);
                 GUI.color = old;
 
                 if (owned.Count > 0 && Widgets.ButtonText(new Rect(row.x + 648f, row.y + 2f, 84f, 24f), "征用私有"))
@@ -1013,7 +1041,9 @@ namespace DshEconomy
                 {
                     Thing t = owned[j];
                     Widgets.Label(new Rect(24f, y + 1f, 270f, 22f), "· 私有 " + t.LabelNoCount + " ×" + t.stackCount);
-                    Widgets.Label(new Rect(300f, y + 1f, 60f, 22f), EconomyPrice.UnitPrice(t, map).ToString("0.##"));
+                    float pv;
+                    if (!pr.prices.TryGetValue(t, out pv)) pv = EconomyPrice.UnitPrice(t, map);
+                    Widgets.Label(new Rect(300f, y + 1f, 60f, 22f), pv.ToString("0.##"));
                     if (Widgets.ButtonText(new Rect(366f, y - 1f, 70f, 22f), "社会化"))
                     {
                         EconomyPrivate.SetPrivate(t, null);
