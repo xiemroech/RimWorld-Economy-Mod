@@ -182,12 +182,40 @@ namespace DshEconomy
             int day = DayIndex;
             if (day != dailyWorkDay)
             {
+                // 换天：把昨天的工时留一份，给"自由王国"判定用（每日结束后结算）
+                SnapshotYesterday();
                 dailyWork.Clear();
                 dailyWorkDay = day;
             }
             float cur;
             dailyWork.TryGetValue(p, out cur);
             dailyWork[p] = cur + ticks;
+        }
+
+        private int yesterdayDay = -1;
+        private Dictionary<Pawn, float> yesterdayWork = new Dictionary<Pawn, float>();
+        private List<Pawn> yesterdayWorkPawns = new List<Pawn>();
+        private List<float> yesterdayWorkValues = new List<float>();
+
+        /// <summary>把当前这份"今日工时"存成"昨日工时"。</summary>
+        private void SnapshotYesterday()
+        {
+            if (dailyWork == null || dailyWork.Count == 0) return;
+            if (yesterdayWork == null) yesterdayWork = new Dictionary<Pawn, float>();
+            yesterdayWork.Clear();
+            foreach (KeyValuePair<Pawn, float> kv in dailyWork)
+            {
+                if (kv.Key != null) yesterdayWork[kv.Key] = kv.Value;
+            }
+            yesterdayDay = dailyWorkDay;
+        }
+
+        /// <summary>昨天这个人干了多少小时（1 小时 = 2500 tick）。换天那一刻结算。</summary>
+        public float YesterdayWorkHours(Pawn p)
+        {
+            if (p == null || yesterdayWork == null) return 0f;
+            float t;
+            return yesterdayWork.TryGetValue(p, out t) ? t / 2500f : 0f;
         }
 
         [System.ThreadStatic] private static bool computingDailyHours;
@@ -1165,6 +1193,36 @@ namespace DshEconomy
                 {
                     if (dailyWorkPawns[i] == null) continue;
                     dailyWork[dailyWorkPawns[i]] = dailyWorkValues[i];
+                }
+            }
+
+            // 昨日工时：只用于"自由王国"那条（每日结束后结算），也存档
+            Scribe_Values.Look(ref yesterdayDay, "dsh_yesterdayDay", -1);
+            if (Scribe.mode == LoadSaveMode.Saving)
+            {
+                yesterdayWorkPawns.Clear();
+                yesterdayWorkValues.Clear();
+                if (yesterdayWork != null)
+                {
+                    foreach (KeyValuePair<Pawn, float> kv in yesterdayWork)
+                    {
+                        if (kv.Key == null) continue;
+                        yesterdayWorkPawns.Add(kv.Key);
+                        yesterdayWorkValues.Add(kv.Value);
+                    }
+                }
+            }
+            Scribe_Collections.Look(ref yesterdayWorkPawns, "dsh_yesterdayWorkPawns", LookMode.Reference);
+            Scribe_Collections.Look(ref yesterdayWorkValues, "dsh_yesterdayWorkValues", LookMode.Value);
+            if (Scribe.mode == LoadSaveMode.LoadingVars || Scribe.mode == LoadSaveMode.PostLoadInit)
+            {
+                if (yesterdayWorkPawns == null) yesterdayWorkPawns = new List<Pawn>();
+                if (yesterdayWorkValues == null) yesterdayWorkValues = new List<float>();
+                yesterdayWork = new Dictionary<Pawn, float>();
+                for (int i = 0; i < yesterdayWorkPawns.Count && i < yesterdayWorkValues.Count; i++)
+                {
+                    if (yesterdayWorkPawns[i] == null) continue;
+                    yesterdayWork[yesterdayWorkPawns[i]] = yesterdayWorkValues[i];
                 }
             }
 

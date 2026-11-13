@@ -126,6 +126,22 @@ namespace DshEconomy
                 }
             }
 
+            // 再补一层：有些箱子（例如自适应存储框架的货箱）不注册储物格，
+            // 东西存在建筑自己的 ThingOwner 里，既不在 AllThings 也不在任何 SlotGroup。
+            // 不递归进去，这类"私有仓库里的货"就会从财富/囤积统计里凭空消失。
+            if (map.listerThings != null)
+            {
+                List<Thing> all2 = map.listerThings.AllThings;
+                for (int i = 0; i < all2.Count; i++)
+                {
+                    Thing t = all2[i];
+                    if (t == null || t.Destroyed) continue;
+                    IThingHolder holder = t as IThingHolder;
+                    if (holder == null) continue;
+                    CollectHeld(dict, holder, seen, 2);
+                }
+            }
+
             // 关键补充：箱子里/货架里/地窖里的东西 spawned=false，不在 listerThings 里。
             // 只扫储物格会让"私有物品放进私有箱就消失"（财富、满意度、囤积统计全少算）。
             if (map.haulDestinationManager != null)
@@ -137,6 +153,9 @@ namespace DshEconomy
                     {
                         SlotGroup g = groups[i];
                         if (g == null || g.HeldThings == null) continue;
+                        // 私有仓库（私有箱子/货架/地窖）里的东西不算"已生成"，不会进 AllThings，
+                        // 所以要单独遍历一遍；但归属只看物品自己的标签，不按"箱子归谁"整批算，
+                        // 否则一个仓库的主人会被算成首富。
                         foreach (Thing t in g.HeldThings)
                         {
                             if (t == null || !seen.Add(t)) continue;
@@ -181,6 +200,22 @@ namespace DshEconomy
             return dict;
         }
 
+        /// <summary>递归收容器里的东西（箱子套箱子也认）。</summary>
+        private static void CollectHeld(Dictionary<Pawn, List<Thing>> dict, IThingHolder holder, HashSet<Thing> seen, int depth)
+        {
+            if (depth < 0 || holder == null) return;
+            ThingOwner owner = holder.GetDirectlyHeldThings();
+            if (owner == null) return;
+            for (int i = 0; i < owner.Count; i++)
+            {
+                Thing t = owner[i];
+                if (t == null || t.Destroyed) continue;
+                if (seen.Add(t)) Collect(dict, t);
+                IThingHolder inner = t as IThingHolder;
+                if (inner != null) CollectHeld(dict, inner, seen, depth - 1);
+            }
+        }
+
         private static void Collect(Dictionary<Pawn, List<Thing>> dict, Thing t)
         {
             if (!IsPrivate(t)) return;
@@ -191,6 +226,19 @@ namespace DshEconomy
             {
                 list = new List<Thing>();
                 dict[c.owner] = list;
+            }
+            list.Add(t);
+        }
+
+        /// <summary>把东西记到指定人名下（用于"私有仓库里的公共物品"按组归属补算）。</summary>
+        private static void AddFor(Dictionary<Pawn, List<Thing>> dict, Thing t, Pawn owner)
+        {
+            if (t == null || owner == null) return;
+            List<Thing> list;
+            if (!dict.TryGetValue(owner, out list))
+            {
+                list = new List<Thing>();
+                dict[owner] = list;
             }
             list.Add(t);
         }

@@ -1,5 +1,6 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
+using UnityEngine;
 using Verse;
 
 namespace DshEconomy
@@ -353,10 +354,55 @@ namespace DshEconomy
             {
                 foreach (Thing t in p.inventory.innerContainer)
                 {
-                    v += t.MarketValue * t.stackCount;
+                    v += Val(t, p.MapHeld);
                 }
             }
             return v;
+        }
+
+        private static Dictionary<Pawn, float> bldValue;
+        private static int bldValueTick = -99999;
+        private static Map bldValueMap;
+
+        /// <summary>统一的估值口径：用 mod 的现价，取不到再退回原版市价。
+        /// 必须和私产面板显示的"估值"一致，否则玩家看到"我有 500"而系统只认 270。</summary>
+        private static float Val(Thing t, Map map)
+        {
+            if (t == null || t.def == null) return 0f;
+            float unit = 0f;
+            try { unit = EconomyPrice.UnitPrice(t, map); } catch { unit = 0f; }
+            if (unit <= 0.01f) unit = t.MarketValue;
+            return unit * Mathf.Max(1, t.stackCount);
+        }
+
+        /// <summary>归他名下的建筑（箱子/货架/工作台等）价值合计。250 tick 缓存一次。</summary>
+        public static float BuildingsValueOf(Pawn p, Map map)
+        {
+            if (p == null || map == null) return 0f;
+            int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+            if (bldValue == null || bldValueMap != map || now - bldValueTick > 250)
+            {
+                Dictionary<Pawn, float> dict = new Dictionary<Pawn, float>();
+                List<Building> all = map.listerBuildings.allBuildingsColonist;
+                if (all != null)
+                {
+                    for (int i = 0; i < all.Count; i++)
+                    {
+                        Building b = all[i];
+                        if (b == null || b.Destroyed) continue;
+                        Pawn owner = EconomyRealEstate.OwnerOfBuilding(b);
+                        if (owner == null) continue;
+                        float val = Val(b, map);
+                        float old;
+                        dict[owner] = dict.TryGetValue(owner, out old) ? old + val : val;
+                    }
+                }
+                bldValue = dict;
+                bldValueMap = map;
+                bldValueTick = now;
+            }
+            float got;
+            return bldValue.TryGetValue(p, out got) ? got : 0f;
         }
 
         /// <summary>只统计"私有"的物品与白银：带私有标签且归属这个人。</summary>
@@ -387,9 +433,11 @@ namespace DshEconomy
                         Thing t = owned[i];
                         if (t == null || t.Destroyed) continue;
                         if (t.def == RimWorld.ThingDefOf.Silver) continue;
-                        v += t.MarketValue * t.stackCount;
+                        v += Val(t, map);
                     }
                 }
+                // 箱子、货架、地窖这些建筑本身也是私有财产：归谁名下就记谁的财富。
+                v += BuildingsValueOf(p, map);
                 return v;
             }
 
@@ -399,7 +447,7 @@ namespace DshEconomy
                 List<Apparel> worn = p.apparel.WornApparel;
                 for (int i = 0; i < worn.Count; i++)
                 {
-                    if (EconomyPrivate.OwnerOf(worn[i]) == p) v += worn[i].MarketValue * worn[i].stackCount;
+                    if (EconomyPrivate.OwnerOf(worn[i]) == p) v += Val(worn[i], p.MapHeld);
                 }
             }
             if (p.equipment != null && p.equipment.Primary != null
@@ -412,7 +460,7 @@ namespace DshEconomy
                 foreach (Thing t in p.inventory.innerContainer)
                 {
                     if (t.def == RimWorld.ThingDefOf.Silver) continue;
-                    if (EconomyPrivate.OwnerOf(t) == p) v += t.MarketValue * t.stackCount;
+                    if (EconomyPrivate.OwnerOf(t) == p) v += Val(t, map);
                 }
             }
             return v;

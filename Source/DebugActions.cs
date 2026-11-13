@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using LudeonTK;
@@ -753,6 +753,100 @@ namespace DshEconomy
                     + " 账本原始=" + EconomyLedger.GetRawLabor(p).ToString("0")
                     + " 今日工时=" + (comp != null ? comp.DailyWorkHours(p).ToString("0.00") : "?") + "h";
                 Log.Message(line);
+            }
+            // 财富口径体检：面板上"私有财富" vs 贫富差距用的最大值，必须是同一套数
+            try
+            {
+                TaxPopulation.ColonyStats st = TaxPopulation.Cached(map, 1);
+                Log.Message("[WEALTH-CK] 统计口径：最富=" + st.wealthMax.ToString("0") + " 最穷=" + st.wealthMin.ToString("0")
+                    + " 平均=" + st.wealthAvg.ToString("0") + " 基尼=" + st.wealthGini.ToString("0.00"));
+                for (int i = 0; i < crew.Count; i++)
+                {
+                    Pawn p = crew[i];
+                    if (p == null) continue;
+                    int silver = EconomyBank.PrivateSilver(map, p);
+                    float w = TaxPopulation.PawnPrivateWealth(p, silver);
+                    Log.Message("[WEALTH-CK] " + p.LabelShort
+                        + " 私银=" + silver
+                        + " 私有物权重=" + (w - silver).ToString("0")
+                        + " 合计=" + w.ToString("0")
+                        + " 倍数=" + (w > 0.01f ? (st.wealthMax / w).ToString("0.0") : "-"));
+                    // 明细：谁的财富异常，就把最贵的几件列出来，直接看是哪样东西被算进去了
+                    try
+                    {
+                        float bagV = 0f, wornV = 0f, handV = 0f, storeV = 0f;
+                        if (p.inventory != null && p.inventory.innerContainer != null)
+                        {
+                            foreach (Thing t in p.inventory.innerContainer)
+                            {
+                                if (t == null || t.Destroyed || t.def == RimWorld.ThingDefOf.Silver) continue;
+                                bagV += t.MarketValue * t.stackCount;
+                            }
+                        }
+                        if (p.apparel != null)
+                        {
+                            foreach (Apparel a in p.apparel.WornApparel)
+                            {
+                                if (a == null || a.Destroyed) continue;
+                                wornV += a.MarketValue * a.stackCount;
+                            }
+                        }
+                        if (p.carryTracker != null && p.carryTracker.CarriedThing != null)
+                            handV = p.carryTracker.CarriedThing.MarketValue * p.carryTracker.CarriedThing.stackCount;
+                        // 私有仓库（归他名下的存储组）里的东西：用来对照"名义上有多少、实际算了多少"
+                        List<SlotGroup> gs = map.haulDestinationManager.AllGroupsListForReading;
+                        for (int gi = 0; gi < gs.Count; gi++)
+                        {
+                            SlotGroup g = gs[gi];
+                            if (g == null || g.HeldThings == null) continue;
+                            if (EconomyPrivateStorageBehavior.OwnerOfGroup(g) != p) continue;
+                            foreach (Thing t in g.HeldThings)
+                            {
+                                if (t == null || t.Destroyed || t.def == RimWorld.ThingDefOf.Silver) continue;
+                                storeV += t.MarketValue * t.stackCount;
+                            }
+                        }
+                        Log.Message("[WEALTH-CK]   " + p.LabelShort
+                            + " 背包=" + bagV.ToString("0") + " 穿戴=" + wornV.ToString("0")
+                            + " 手持=" + handV.ToString("0") + " 私有仓库=" + storeV.ToString("0")
+                            + " 建筑=" + TaxPopulation.BuildingsValueOf(p, map).ToString("0")
+                            + " → 随身合计=" + (bagV + wornV + handV).ToString("0"));
+                        // 最贵的几件（含穿戴），用来判断"首富"是定价离谱还是真有一件好东西
+                        try
+                        {
+                            List<Thing> owned = EconomyPrivate.OwnedItems(p, map);
+                            List<Thing> top = new List<Thing>();
+                            for (int k = 0; k < owned.Count; k++)
+                            {
+                                Thing t = owned[k];
+                                if (t == null || t.Destroyed || t.def == RimWorld.ThingDefOf.Silver) continue;
+                                top.Add(t);
+                            }
+                            top.Sort((a, b) => (b.MarketValue * b.stackCount).CompareTo(a.MarketValue * a.stackCount));
+                            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                            sb.Append("[WEALTH-CK]     ").Append(p.LabelShort).Append(" 共 ").Append(top.Count).Append(" 件，最贵：");
+                            for (int k = 0; k < top.Count && k < 3; k++)
+                            {
+                                if (k > 0) sb.Append(" / ");
+                                sb.Append(top[k].def.defName).Append('×').Append(top[k].stackCount)
+                                  .Append('=').Append((top[k].MarketValue * top[k].stackCount).ToString("0"));
+                            }
+                            Log.Message(sb.ToString());
+                        }
+                        catch (System.Exception e3)
+                        {
+                            Log.Warning("[WEALTH-CK] 最贵明细失败：" + e3.Message);
+                        }
+                    }
+                    catch (System.Exception e2)
+                    {
+                        Log.Warning("[WEALTH-CK] 明细失败：" + e2.Message);
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[WEALTH-CK] 财富体检失败：" + e.Message);
             }
             Log.Message("[LABOR-CK] ===== 结束 =====");
             Messages.Message("劳动体检已打印到 Player.log（搜 [LABOR-CK]）", MessageTypeDefOf.NeutralEvent, false);

@@ -54,14 +54,14 @@ namespace DshEconomy
             return cacheMax / mine;
         }
 
-        /// <summary>私有制程度越高，阈值越高（越不容易触发）。</summary>
+        /// <summary>阈值按"制度"算，不看社会化拉条：
+        /// 私有制 = 8 倍（容忍差距大），公有制 = 3 倍（要求平等）。
+        /// 社会化拉满时不判定（调用方直接跳过）。</summary>
         public static float ThresholdOf(Pawn p)
         {
             Map map = p.MapHeld ?? p.Map;
-            MapEconomyComponent comp = map != null ? map.GetComponent<MapEconomyComponent>() : null;
-            float avg = comp != null ? comp.AveragePublicization() : 50f;   // 0=全私有，100=全公有
-            float privateShare = 1f - Mathf.Clamp01(avg / 100f);
-            return BaseThreshold + PrivateBoost * privateShare;
+            if (map != null && EconomyDoctrine.IsPublic(map)) return BaseThreshold;
+            return BaseThreshold + PrivateBoost;
         }
 
         public static string Describe(Pawn p)

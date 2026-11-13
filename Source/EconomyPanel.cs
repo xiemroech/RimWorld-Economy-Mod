@@ -935,16 +935,19 @@ namespace DshEconomy
             {
                 privateSortMode = 0;
                 SortColonists(colonists, map, index);
+                privRowTick = -99999;   // 点完立刻重建行缓存，否则要等 250 tick 才看得出变化
             }
             if (Widgets.ButtonText(new Rect(viewRect.width - 236f, 4f, 60f, 26f), "姓名"))
             {
                 privateSortMode = 1;
                 SortColonists(colonists, map, index);
+                privRowTick = -99999;
             }
             if (Widgets.ButtonText(new Rect(viewRect.width - 172f, 4f, 60f, 26f), "件数"))
             {
                 privateSortMode = 2;
                 SortColonists(colonists, map, index);
+                privRowTick = -99999;
             }
             float y = 34f;
             Widgets.Label(new Rect(4f, y, viewRect.width, 40f),

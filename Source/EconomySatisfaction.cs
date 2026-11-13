@@ -63,6 +63,12 @@ namespace DshEconomy
         public const float PainPenaltyPerPct = -0.12f;
         public const float MaxPainPenalty = -6f;
 
+        /// <summary>工资类三项（足额 / 长期保证 / 加班费）在全私有时的合计上限：
+        /// 原满分 18 + 每项各 2（共 24）。公有化越高越少，全公有为 0。</summary>
+        public const float WageBonusTotal = 24f;
+        /// <summary>三项原本的满分之和（6 + 4 + 8），用来把 WageBonusTotal 摊回去。</summary>
+        private const float WageBonusRawTotal = 18f;
+
         // 谁最近在集体宿舍（RoomRoleDefOf.Barracks）睡过 —— 原版就是按房间角色判定的
         private static readonly Dictionary<Pawn, int> lastBarracksTick = new Dictionary<Pawn, int>();
         // 谁最近没有床、直接睡在地上（含草地/泥地/普通地板）
@@ -116,6 +122,187 @@ namespace DshEconomy
             return Find.TickManager.TicksGame - t < GenDate.TicksPerDay;
         }
 
+        /// <summary>全局公共化比例（0~100）：所有经济分类社会化程度的平均值。</summary>
+        private static float GlobalPublicization(Pawn p)
+        {
+            Map map = p != null ? (p.MapHeld ?? p.Map) : null;
+            MapEconomyComponent c = map != null ? map.GetComponent<MapEconomyComponent>() : null;
+            return c != null ? c.AveragePublicization() : 0f;
+        }
+
+        /// <summary>该派系的主意识形态里有没有这条财产制度戒律。</summary>
+        private static bool FactionHasOwnership(Faction f, string preceptDefName)
+        {
+            if (f == null || f.ideos == null) return false;
+            Ideo ideo = f.ideos.PrimaryIdeo;
+            if (ideo == null) return false;
+            List<Precept> ps = ideo.PreceptsListForReading;
+            for (int i = 0; i < ps.Count; i++)
+            {
+                Precept pr = ps[i];
+                if (pr != null && pr.def != null && pr.def.defName == preceptDefName) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 对外路线：按"殖民地自己信什么"评价各派系好感。
+        /// 公有制戒律 → 跟公有制派系越好越满意（最高 +4），负关系则"社会帝国主义？"（最多 −6）。
+        /// 私有制戒律 → 跟私有制派系越敌对越有斗志（最高 +8）；关系高于 40 挂"社会和解的失败"（最多 −12）。
+        /// 只统计"有对应戒律"的派系；一个都没有就什么都不加。
+        /// </summary>
+        private static void ApplyFactionLine(Pawn p, List<(string label, float value)> entries, ref float total)
+        {
+            if (p == null || p.Ideo == null) return;
+
+            bool colonistPublic = false, colonistPrivate = false;
+            List<Precept> mine = p.Ideo.PreceptsListForReading;
+            for (int i = 0; i < mine.Count; i++)
+            {
+                Precept pr = mine[i];
+                if (pr == null || pr.def == null) continue;
+                if (pr.def.defName == "DshEco_PreceptPublicOwnership") colonistPublic = true;
+                else if (pr.def.defName == "DshEco_PreceptPrivateOwnership") colonistPrivate = true;
+            }
+            if (!colonistPublic && !colonistPrivate) return;
+
+            List<Faction> all = Find.FactionManager.AllFactionsListForReading;
+            if (all == null || all.Count == 0) return;
+
+            float pubSum = 0f; int pubN = 0;               // 公有制阵营
+            float privSum = 0f; int privN = 0;             // 私有制阵营（没有公有戒律的都算）
+            float pubPosSum = 0f; int pubPosN = 0;         // 公有制阵营里关系正面的
+            float pubHostileSum = 0f; int pubHostileN = 0; // 公有制阵营里好感 <50 的
+            float privPosSum = 0f; int privPosN = 0;       // 私有制阵营里关系正面的
+            for (int i = 0; i < all.Count; i++)
+            {
+                Faction f = all[i];
+                if (f == null || f.IsPlayer || f.defeated || f.Hidden) continue;
+                int gw = f.PlayerGoodwill;
+                bool hasPub = FactionHasOwnership(f, "DshEco_PreceptPublicOwnership");
+                if (hasPub)
+                {
+                    pubSum += gw; pubN++;
+                    if (gw > 0) { pubPosSum += gw; pubPosN++; }
+                    if (gw < 50)
+                    {
+                        float t = Mathf.Clamp01((50f - gw) / 100f);
+                        pubHostileSum += t * t; pubHostileN++;
+                    }
+                }
+                else
+                {
+                    privSum += gw; privN++;
+                    if (gw > 0) { privPosSum += gw; privPosN++; }
+                }
+            }
+
+            // ---- 信公有制 ----
+            if (colonistPublic)
+            {
+                if (pubN > 0)
+                {
+                    float avg = pubSum / pubN;
+                    if (avg >= 0f)
+                    {
+                        float bonus = 4f * Mathf.Clamp01(avg / 100f);
+                        if (bonus >= 0.05f)
+                        {
+                            string label = bonus >= 2f
+                                ? "无产者没有祖国（公有制派系平均好感 " + avg.ToString("0") + "）"
+                                : "联合起来（公有制派系平均好感 " + avg.ToString("0") + "）";
+                            Add(entries, label, bonus);
+                            total += bonus;
+                        }
+                    }
+                    else
+                    {
+                        float pen = -6f * Mathf.Clamp01(-avg / 100f);
+                        if (pen <= -0.05f)
+                        {
+                            Add(entries, "社会帝国主义？（公有制派系平均好感 " + avg.ToString("0") + "）", pen);
+                            total += pen;
+                        }
+                    }
+                }
+
+                if (privN > 0)
+                {
+                    float avg = privSum / privN;
+                    if (avg < 0f)
+                    {
+                        float bonus = 8f * Mathf.Clamp01(-avg / 100f);
+                        if (bonus >= 0.05f)
+                        {
+                            Add(entries, "阶级斗争（私有制派系平均好感 " + avg.ToString("0") + "）", bonus);
+                            total += bonus;
+                        }
+                    }
+                    if (avg > 40f)
+                    {
+                        float pen = -12f * Mathf.Clamp01((avg - 40f) / 60f);
+                        if (pen <= -0.05f)
+                        {
+                            Add(entries, "社会和解的失败（私有制派系平均好感 " + avg.ToString("0") + "）", pen);
+                            total += pen;
+                        }
+                    }
+                }
+                return;
+            }
+
+            // ---- 信私有制：按阶级分 ----
+            Map fmap = p.MapHeld;
+            if (fmap == null) return;
+            float myW = 0f, avgW = 0f;
+            try
+            {
+                myW = TaxPopulation.PawnPrivateWealth(p, EconomyBank.PrivateSilver(fmap, p));
+                avgW = TaxPopulation.Cached(fmap, 250).wealthAvg;
+            }
+            catch { }
+            if (avgW <= 1f) return;
+            bool isRich = myW > avgW * 1.3f;
+            bool isPoor = myW < avgW * 0.75f;
+
+            if (isRich && privPosN > 0)
+            {
+                float b = 8f * Mathf.Clamp01(privPosSum / privPosN / 100f);
+                if (b >= 0.05f)
+                {
+                    Add(entries, "全球帝国主义（私有制派系对我们友好 " + (privPosSum / privPosN).ToString("0") + "）", b);
+                    total += b;
+                }
+            }
+            if (isRich && pubPosN > 0)
+            {
+                float b = -8f * Mathf.Clamp01(pubPosSum / pubPosN / 100f);
+                if (b <= -0.05f)
+                {
+                    Add(entries, "游荡的幽灵（公有制派系对我们友好 " + (pubPosSum / pubPosN).ToString("0") + "）", b);
+                    total += b;
+                }
+            }
+            if (isPoor && pubHostileN > 0)
+            {
+                float b = 14f * (pubHostileSum / pubHostileN);
+                if (b >= 0.05f)
+                {
+                    Add(entries, "稻卡金主义（公有制阵营对我等穷人不友好）", b);
+                    total += b;
+                }
+            }
+        }
+        /// <summary>工资类加分的权重：看全局公共化比例。
+        /// 全私有（0%）= 1.0 拿满；全公有（100%）= 0 一分不给——那时候工资已经没有意义。</summary>
+        private static float WageScale(Map map)
+        {
+            MapEconomyComponent c = map != null ? map.GetComponent<MapEconomyComponent>() : null;
+            float avgPub = c != null ? c.AveragePublicization() : 50f;
+            // 全私有 → 1.0；全公有 → 0
+            return 1f - Mathf.Clamp01(avgPub / 100f);
+        }
+
         /// <summary>
         /// 目标满意度 = 50 + 各项之和。entries 不为空时顺便把明细填进去（给提示用）。
         /// </summary>
@@ -123,6 +310,8 @@ namespace DshEconomy
         {
             if (p == null) return Baseline;
             float total = 0f;
+            bool needsAllMet = false;   // 是否已拿到「按需分配」
+            bool freeKingdom = false;   // 是否已拿到「自由王国」
 
             // 1. 工资的三笔扣减分开算，各自惩罚、可以叠加：
             //    ① 工资比例抽走的剩余价值（制度性，越大越不满）
@@ -212,13 +401,18 @@ namespace DshEconomy
             }
 
             // 2.52 贫富差距：最富的人是你 X 倍以上时扣分；越接近公有制越容易触发
-            if (EconomyWealthGap.Enabled(p))
+            bool gapPenalized = false;
+            // 社会化拉满（全局 100%）时，这套制度下不存在"贫富差距"，整条不判定
+            if (EconomyWealthGap.Enabled(p) && GlobalPublicization(p) < 99.5f)
             {
                 float ratio = EconomyWealthGap.RatioOf(p);
                 float threshold = EconomyWealthGap.ThresholdOf(p);
                 if (ratio > threshold)
                 {
-                    float pen = -Mathf.Min(12f, (ratio / Mathf.Max(1f, threshold) - 1f) * 4f);
+                    gapPenalized = true;
+                    // 扣分按"超出阈值的倍数"算：6.6 倍 / 阈值 5.5 → 超出 1.1 倍 → −3.3。
+            // 以前用 (ratio/threshold - 1) * 4，6.6 倍只扣 −0.8，等于没扣。
+            float pen = -Mathf.Min(12f, (ratio - threshold) * 3f);
                     Add(entries, "贫富差距（最富是你的 " + ratio.ToString("0.0") + " 倍，阈值 " + threshold.ToString("0.0")
                 + " 倍，财富基尼 " + EconomyWealthGap.Gini.ToString("0.00") + "）", pen);
                     total += pen;
@@ -278,9 +472,11 @@ namespace DshEconomy
                     float ratio = paid / expected;
                     if (ratio >= 0.98f)
                     {
-                        float bonus = ratio > 1.001f
+                        float bonus = (ratio > 1.001f
                             ? Mathf.Min(6f, 3f + Mathf.Round((ratio - 1f) * 10f))
-                            : 3f;
+                            : 3f) + 2f;
+                        // 越公有化，工资越不重要：全私有拿满，全公有只留 30%
+                        bonus *= WageScale(p.MapHeld);
                         Add(entries, "工资足额（实发 " + paid.ToString("0") + " / 该发 "
                             + expected.ToString("0") + "）", bonus);
                         total += bonus;
@@ -317,12 +513,66 @@ namespace DshEconomy
             if (mapPos != null)
             {
                 float wealth = TaxPopulation.PawnPrivateWealth(p, EconomyBank.PrivateSilver(mapPos, p));
-                float bonus = wealth >= 10000f ? 4f : (wealth >= 4000f ? 3f : (wealth >= 1500f ? 2f : (wealth >= 500f ? 1f : 0f)));
+                float bonus = wealth >= 10000f ? 2f : (wealth >= 4000f ? 1.5f : (wealth >= 1500f ? 1f : (wealth >= 500f ? 0.5f : 0f)));
                 if (bonus > 0.01f)
                 {
                     Add(entries, "私有财产（" + wealth.ToString("0") + " 银）", bonus);
                     total += bonus;
                 }
+
+                // ④b 可支配现金：手上能不能拿出钱来吃饭。
+                // 用"几天饭钱"做尺子（1 天 = 3 顿饭的现价），比绝对值公平：
+                //   0 天 → -20（一分钱没有，很慌）
+                //   2 天 → 0（刚好够撑到发薪）
+                //   5 天以上 → +12（手头宽裕）
+                // 全公有、物质极大丰富时现金不再重要，整体按私有化程度打折（最低 40%）。
+                float dayCost = 0f;
+                try
+                {
+                    ThingDef meal = ThingDefOf.MealSimple;
+                    if (meal != null) dayCost = EconomyPrice.UnitPrice(meal, mapPos) * 3f;
+                }
+                catch { dayCost = 0f; }
+                if (dayCost > 0.05f)
+                {
+                    int silver = EconomyBank.PrivateSilver(mapPos, p);
+                    float days = silver / dayCost;
+                    float score;
+                    if (days <= 0.01f) score = -20f;
+                    else if (days < 2f) score = Mathf.Lerp(-20f, 0f, days / 2f);
+                    else if (days < 5f) score = Mathf.Lerp(0f, 8f, (days - 2f) / 3f);
+                    else score = 8f;
+
+                    MapEconomyComponent mcmp = mapPos.GetComponent<MapEconomyComponent>();
+                    float avgPub = mcmp != null ? mcmp.AveragePublicization() : 50f;
+                    float privateShare = 1f - Mathf.Clamp01(avgPub / 100f);
+                    score *= 0.4f + 0.6f * privateShare;
+                    if (Mathf.Abs(score) > 0.05f)
+                    {
+                        Add(entries, "可支配现金（" + silver + " 银 ≈ " + days.ToString("0.0") + " 天饭钱）", score);
+                        total += score;
+                    }
+                }
+
+                // ④c 相对优越：比殖民地平均更有钱时的"我过得比别人好"的分。
+                // 只给正的，最多 +12（和穷人被"贫富差距"扣的上限对称）；穷人不倒扣。
+                // 1.2 倍 → +2，1.6 倍 → +6，2.2 倍以上 → +12。
+                try
+                {
+                    TaxPopulation.ColonyStats st = TaxPopulation.Cached(mapPos, 250);
+                    float avgWealth = st.wealthAvg;
+                    if (avgWealth > 1f && wealth > avgWealth * 1.05f)
+                    {
+                        float ratio = wealth / avgWealth;
+                        int sup = Mathf.Clamp(Mathf.RoundToInt((ratio - 1f) * 10f), 0, 12);
+                        if (sup > 0)
+                        {
+                            Add(entries, "相对优越（财富是平均的 " + ratio.ToString("0.0") + " 倍）", sup);
+                            total += sup;
+                        }
+                    }
+                }
+                catch { }
             }
 
             // ⑤ 心情 / 精力 / 娱乐 都在 80% 以上，各 +1
@@ -350,7 +600,9 @@ namespace DshEconomy
             {
                 int n = mpos.consecutiveOnTimePays;
                 float bonus = n >= 30 ? 4f : (n >= 20 ? 3f : (n >= 10 ? 2f : (n >= 3 ? 1f : 0f)));
-                if (bonus > 0f)
+                if (bonus > 0.01f) bonus += 2f;
+                bonus *= WageScale(mapPos);
+                if (bonus > 0.01f)
                 {
                     Add(entries, "长期工作保证（连续按时发薪 " + n + " 期）", bonus);
                     total += bonus;
@@ -438,7 +690,10 @@ namespace DshEconomy
                 bool targetsMet = EconomyConsumption.UnmetCount(p) <= 3;
                 float welfare = BasicWelfare(mpos);
 
-                // 公共福利只从 75% 起算：75% 以下没有"福利感"，100% 才有满额
+                // 公共福利的加成条件（和"按需分配"互斥，不会同时出现）：
+                //   ① 基础消费品社会化 75%~99.4%：线性 0~+10（75% 以下没有福利感）
+                //   ② 社会化 ≥ 99.5%：这项改为 0，由「按需分配」+20 接替，避免同一件事给两次分
+                //   ③ 额外前提：最近"想买没买到"不超过 3 次，否则只显示"公共福利受阻"不加分
                 int bonus = welfare >= 99.5f ? 0 : Mathf.RoundToInt(Mathf.Clamp01((welfare - 75f) / 25f) * 10f);
                 if (bonus > 0 && targetsMet)
                 {
@@ -552,11 +807,13 @@ namespace DshEconomy
                 }
             }
 
-            // 2.84 较为平均：基尼 0.80 → 0，0.20 → +4（两套制度都能拿）
+            // 2.84 较为平均：基尼 0.30 → 0，0.10 → +4。
+            // 以前门槛写 0.80、再加上"贫富差距"独立判定，会出现"较为平均 +2.0"和"贫富差距 -2.1"同时挂在一条上，很抽象。
+            // 现在：门槛收到 0.30；并且本回合已经吃"贫富差距"扣分的，不再给"较为平均"。
             float giniAll = EconomyWealthGap.Gini;
-            if (giniAll < 0.8f)
+            if (!gapPenalized && giniAll < 0.30f)
             {
-                int evenBonus = Mathf.Clamp(Mathf.RoundToInt((0.8f - giniAll) / 0.6f * 4f), 0, 4);
+                int evenBonus = Mathf.Clamp(Mathf.RoundToInt((0.30f - giniAll) / 0.20f * 4f), 0, 4);
                 if (evenBonus > 0)
                 {
                     Add(entries, "较为平均（财富基尼 " + giniAll.ToString("0.00") + "）", evenBonus);
@@ -582,23 +839,38 @@ namespace DshEconomy
                     }
                     if (!starving)
                     {
-                        Add(entries, "人人有饭吃（食物全社会化，无人营养不良）", 3f);
-                        total += 3f;
+                        Add(entries, "人人有饭吃（食物全社会化，无人营养不良）", 5f);
+                        total += 5f;
                     }
                 }
 
                 // ① 按需分配：四类基础消费品全部 100% 社会化，且确实买得到
                 if (welfare >= 99.5f && met)
                 {
-                    Add(entries, "按需分配（基础消费品全部社会化）", 10f);
-                    total += 10f;
+                    Add(entries, "按需分配（基础消费品全部社会化）", 20f);
+                    total += 20f;
+                    needsAllMet = true;
                 }
 
                 // ② 无阶级差别：财富基尼很低（大家都差不多）
                 if (EconomyWealthGap.Gini < 0.2f)
                 {
-                    Add(entries, "无阶级差别（财富基尼 " + EconomyWealthGap.Gini.ToString("0.00") + "）", 5f);
-                    total += 5f;
+                    Add(entries, "无阶级差别（财富基尼 " + EconomyWealthGap.Gini.ToString("0.00") + "）", 12f);
+                    total += 12f;
+                }
+
+                // ②b 法权的幽灵：公有制下贫富差距仍然很大 → 工作满意度 −15。
+                //     这是对"名义公有、实际有特权阶层"的惩罚，差距越大越重（此处是开关式）：
+                //     最富 ≥ 你的 4 倍，或全殖民地财富基尼 ≥ 0.40，就挂上。
+                float gapRatio = EconomyWealthGap.RatioOf(p);
+                float gapGini = EconomyWealthGap.Gini;
+                // 触发点 = 阈值 + 4 × 2/3：也就是"贫富差距这条已经吃到三分之二"的时候。
+                // 公有制阈值 3 → 5.7 倍；社会化拉满时这项整体不存在。
+                if (GlobalPublicization(p) < 99.5f && gapRatio >= EconomyWealthGap.ThresholdOf(p) + 2.7f)
+                {
+                    Add(entries, "法权的幽灵（最富是你的 " + gapRatio.ToString("0.0") + " 倍，财富基尼 "
+                        + gapGini.ToString("0.00") + "）", -15f);
+                    total -= 15f;
                 }
 
                 // ③ 劳动光荣：殖民地九成以上的人这一期都在干活
@@ -613,6 +885,20 @@ namespace DshEconomy
                         total += 3f;
                     }
                 }
+            }
+
+            // 2.86 对外路线：按"你自己信什么"去评价各派系好感
+            //   公有制戒律：跟公有制派系越好越满意（最高 +4，低于 2 时文案改成"联合起来"），
+            //              关系为负则挂"社会帝国主义？"（最多 −6）
+            //   私有制戒律：跟私有制派系越敌对越有阶级斗志（最高 +8）；关系高于 40 反而挂
+            //              "社会和解的失败"（最多 −12）
+            try
+            {
+                ApplyFactionLine(p, entries, ref total);
+            }
+            catch (System.Exception e)
+            {
+                DevLog.Msg("[SAT] 对外路线判定失败：" + e.GetType().Name);
             }
 
             // 3. 劳动时间惩罚：今天干超过 8 小时，每多 1 小时 −0.75，最多 −6
@@ -634,7 +920,8 @@ namespace DshEconomy
                     if (wp != null && wp.OvertimeOnFor(p))
                     {
                         float mult = Mathf.Max(1f, wp.OvertimeMultFor(p));
-                        float bonus = (mult - 1f) * OvertimeSatisfactionPerMultiplier;
+                        float bonus = (mult - 1f) * OvertimeSatisfactionPerMultiplier + 2f;
+                        bonus *= WageScale(mapHeld);
                         if (bonus > 0.001f)
                         {
                             total += bonus;
@@ -645,8 +932,19 @@ namespace DshEconomy
                 }
             }
 
-            // 3.5 短工时加成：今天干活但不满 8 小时，越少越"清闲"，最多 +6
-            if (hours > 0.01f && hours < StandardHoursPerDay && MapEconomyComponent.LaborOnMap(p) > 0.01f)
+            // 3.4 自由王国：按需分配 + 昨天干不到 4 小时 → +10（每日结束后结算，用昨天的工时）
+            //     没有按需分配时，退回原来的「工时较短」逻辑（今天不满 8 小时，最多 +6）
+            if (needsAllMet && me != null)
+            {
+                float yHours = me.YesterdayWorkHours(p);
+                if (yHours < 4f && MapEconomyComponent.LaborOnMap(p) > 0.01f)
+                {
+                    Add(entries, "自由王国（昨日工时 " + yHours.ToString("0.0") + " 小时，低于 4 小时）", 10f);
+                    total += 10f;
+                    freeKingdom = true;
+                }
+            }
+            if (!freeKingdom && hours > 0.01f && hours < StandardHoursPerDay && MapEconomyComponent.LaborOnMap(p) > 0.01f)
             {
                 float idle = (StandardHoursPerDay - hours) / StandardHoursPerDay;
                 float bonus = Mathf.Min(6f, Mathf.Round(idle * 6f));
