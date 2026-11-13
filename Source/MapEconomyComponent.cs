@@ -529,6 +529,14 @@ namespace DshEconomy
                 PublicizeWornOutApparel();
                 EconomyPurchaseLog.Prune();
 
+                // 工单账本按天自动清理旧条目
+                EconomyBillLedger ledger = map.GetComponent<EconomyBillLedger>();
+                if (ledger != null)
+                {
+                    int cut = ledger.Prune(DshEconomyMod.Settings != null ? DshEconomyMod.Settings.billLedgerDays : 0f);
+                    if (cut > 0) DevLog.Msg("[BILL] 账本自动清理了 " + cut + " 条旧记录");
+                }
+
                 // 矿场没有座位，小人站着挖会一直被扣舒适度；挖矿是体力活，这里不让他掉
                 KeepMinerComfort();
 

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -17,6 +17,7 @@ namespace DshEconomy
         private ThingDef renamingDef;
         private string search = "";
         private bool onlyRules;
+        private bool onlyColony;
 
         public Window_Restock(Building_Storage storage)
         {
@@ -164,13 +165,19 @@ namespace DshEconomy
             Rect inner = outer.ContractedBy(4f);
 
             // 顶部：搜索框 + 只显示已设置
-            Rect bar = new Rect(inner.x, inner.y, inner.width, 28f);
+            // 两行：第一行搜索/清除/只看殖民地有的，第二行统计（以前统计和勾选框挤在同一行，会叠字）
+            Rect bar = new Rect(inner.x, inner.y, inner.width, 54f);
             Widgets.Label(new Rect(bar.x, bar.y + 4f, 50f, 24f), "搜索");
             search = Widgets.TextField(new Rect(bar.x + 46f, bar.y + 2f, 220f, 24f), search ?? string.Empty);
             // 搜索框右边的"清除"：一键回到不搜索的状态
             if ((search ?? string.Empty).Length > 0
                 && Widgets.ButtonText(new Rect(bar.x + 270f, bar.y + 2f, 52f, 24f), "清除"))
                 search = string.Empty;
+
+            // 勾上它就是一键"只列殖民地现成有的东西"，不用先搜索
+            bool oc = onlyColony;
+            Widgets.CheckboxLabeled(new Rect(bar.x + 330f, bar.y + 2f, 150f, 24f), "只看殖民地有的", ref oc);
+            onlyColony = oc;
 
 
             List<ThingDef> all;
@@ -190,10 +197,13 @@ namespace DshEconomy
                     "列表构建失败：" + e.Message + "\n（详细信息见 Player.log）");
                 return;
             }
-            Widgets.Label(new Rect(bar.xMax - 240f, bar.y + 4f, 240f, 24f),
-                ("允许 " + all.Count + " 种 · 显示 " + shown.Count + " · 已占 " + Mathf.RoundToInt(RestockStore.TotalPct(comp)) + "%").Truncate(240f));
+            Widgets.Label(new Rect(bar.x, bar.y + 30f, inner.width - 8f, 22f),
+                ("允许 " + all.Count + " 种 · 显示 " + shown.Count + " · 已占 " + Mathf.RoundToInt(RestockStore.TotalPct(comp)) + "%"));
 
-            Rect body = new Rect(inner.x, bar.yMax + 2f, inner.width, inner.height - 30f);
+            // 列表区高度必须按"顶栏实际高度"算：顶栏从 28 加到 54（多了一行统计），
+            // 这里以前写死 inner.height - 30f，结果底部 24 像素漏出框外，最后一行（乌鸦尸体）画在边框下面。
+            float bodyTop = bar.yMax + 2f;
+            Rect body = new Rect(inner.x, bodyTop, inner.width, Mathf.Max(60f, inner.yMax - bodyTop - 4f));
             const float rowH = 46f;
             float total = shown.Count * rowH + 40f;
             Rect view = new Rect(0f, 0f, body.width - 20f, Mathf.Max(total, body.height));
@@ -210,7 +220,8 @@ namespace DshEconomy
 
                 Rect icon = new Rect(row.x + 28f, row.y + 4f, 26f, 26f);
                 Widgets.ThingIcon(icon, def);
-                Widgets.Label(new Rect(icon.xMax + 6f, row.y + 7f, 190f, 24f), def.LabelCap.Truncate(180f));
+                // 名字列收窄到 150：以前 190 宽会压到后面的「占比」上（长名字穿模）
+                Widgets.Label(new Rect(icon.xMax + 6f, row.y + 7f, 150f, 24f), def.LabelCap.Truncate(140f));
 
                 // 勾选框：勾上=这条规则启用（可以调占比/件数），取消=删掉这条规则
                 bool hadRule = rule != null;
@@ -236,7 +247,7 @@ namespace DshEconomy
                 if (rule == null)
                 {
                     GUI.color = new Color(1f, 1f, 1f, 0.55f);
-                    Widgets.Label(new Rect(icon.xMax + 6f + 210f, row.y + 7f, 320f, 24f), "未勾选（勾上才能调占比/件数）");
+                    Widgets.Label(new Rect(icon.xMax + 6f + 160f, row.y + 7f, 320f, 24f), "未勾选（勾上才能调占比/件数）");
                     GUI.color = Color.white;
                     // 必须自己把 y 往前推：continue 会跳过循环末尾的 y += rowH，
                     // 结果后面所有行都画在同一行上（文字叠成一坨）。
@@ -258,7 +269,7 @@ namespace DshEconomy
                 float itemsBoxX = delX - 112f;
                 float itemsLblX = itemsBoxX - 22f;
 
-                float x = row.x + 196f;
+                float x = row.x + 212f;
                 Widgets.Label(new Rect(x, row.y + 13f, 34f, 24f), "占比");
                 x += 34f;
                 float pctW = Mathf.Clamp(itemsLblX - 150f - x, 120f, 150f);
@@ -275,7 +286,7 @@ namespace DshEconomy
                 float infoW = Mathf.Max(80f, itemsLblX - x - 10f);
                 Rect line1 = new Rect(x + 8f, row.y + 3f, infoW, 22f);
                 Rect line2 = new Rect(x + 8f, row.y + 23f, infoW, 20f);
-                Widgets.Label(line1, ("目标 " + allotItems + " 件 · 上限 " + capItems + " 件").Truncate(infoW));
+                Widgets.Label(line1, ("目标 " + allotItems + " 件 · 上限 " + capItems).Truncate(infoW));
                 GUI.color = new Color(1f, 1f, 1f, 0.65f);
                 Widgets.Label(line2, ("≈ " + targetGroups + "/" + capGroups + " 组 · " + targetSlots + "/" + slots + " 槽").Truncate(infoW));
                 GUI.color = Color.white;
@@ -381,6 +392,45 @@ namespace DshEconomy
             return cachedDefs;
         }
 
+        // ── 只看殖民地有的 ───────────────────────────────────────────────
+        // 每 250 tick 重建一次"地图上现在有哪些 def"（含殖民者背包），不每帧扫。
+        private static readonly HashSet<ThingDef> colonyDefs = new HashSet<ThingDef>();
+        private static int colonyTick = -99999;
+        private static Map colonyMap;
+
+        private static bool ColonyHas(ThingDef d)
+        {
+            if (d == null) return false;
+            Map map = Find.CurrentMap;
+            if (map == null) return true;
+            int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+            if (map != colonyMap || now - colonyTick > 250)
+            {
+                colonyMap = map;
+                colonyTick = now;
+                colonyDefs.Clear();
+                try
+                {
+                    List<Thing> all = map.listerThings.AllThings;
+                    for (int i = 0; i < all.Count; i++)
+                        if (all[i] != null && all[i].def != null) colonyDefs.Add(all[i].def);
+                }
+                catch { }
+                try
+                {
+                    List<Pawn> ps = map.mapPawns.FreeColonistsSpawned;
+                    for (int i = 0; i < ps.Count; i++)
+                    {
+                        Pawn p = ps[i];
+                        if (p == null || p.inventory == null || p.inventory.innerContainer == null) continue;
+                        foreach (Thing t in p.inventory.innerContainer)
+                            if (t != null && t.def != null) colonyDefs.Add(t.def);
+                    }
+                }
+                catch { }
+            }
+            return colonyDefs.Contains(d);
+        }
         private List<ThingDef> Filtered(List<ThingDef> all)
         {
             string q = (search ?? string.Empty).Trim();
@@ -392,8 +442,11 @@ namespace DshEconomy
                 if (d == null) continue;
                 RestockRule rule = comp.rules.Find(r => r != null && r.def == d);
 
-                // 没搜索、也没勾「只看已设置」时，只显示已设规则的（否则几千行会卡）
-                if (q.Length == 0 && rule == null) continue;
+                if (onlyColony && !ColonyHas(d)) continue;
+
+                // 没搜索、也没勾「只看已设置」时，只显示已设规则的（否则几千行会卡）；
+                // 但勾了「只看殖民地有的」就该一键全列出来，不然等于还得再搜一次。
+                if (q.Length == 0 && !onlyColony && rule == null) continue;
                 if (q.Length > 0)
                 {
                     // label / defName 都可能是 null（mod 里没填），直接 IndexOf 会抛空引用，

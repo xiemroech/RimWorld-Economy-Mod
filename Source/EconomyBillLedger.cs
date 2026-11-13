@@ -16,6 +16,9 @@ namespace DshEconomy
         public float outputValue;
         public float laborDays;
 
+        /// <summary>最后一次记账的 tick：用于按天自动清理旧记录。</summary>
+        public int lastTick;
+
         public float WageValue
         {
             get
@@ -68,6 +71,7 @@ namespace DshEconomy
         private List<float> inputs = new List<float>();
         private List<float> outputs = new List<float>();
         private List<float> labors = new List<float>();
+        private List<int> stamps = new List<int>();
 
         public EconomyBillLedger(Map map) : base(map)
         {
@@ -75,13 +79,36 @@ namespace DshEconomy
 
         private BillRecord GetOrCreate(string label, RecipeDef recipe)
         {
+            int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
             for (int i = 0; i < records.Count; i++)
             {
-                if (records[i].label == label) return records[i];
+                if (records[i].label == label)
+                {
+                    records[i].lastTick = now;
+                    return records[i];
+                }
             }
-            var rec = new BillRecord { label = label, recipe = recipe };
+            var rec = new BillRecord { label = label, recipe = recipe, lastTick = now };
             records.Add(rec);
             return rec;
+        }
+
+        /// <summary>按天清理：超过 days 天没有新记账的条目直接丢掉（0 或负数 = 不清理）。</summary>
+        public int Prune(float days)
+        {
+            if (days <= 0.01f || records.Count == 0) return 0;
+            int now = Find.TickManager != null ? Find.TickManager.TicksGame : 0;
+            int limit = (int)(days * GenDate.TicksPerDay);
+            int removed = 0;
+            for (int i = records.Count - 1; i >= 0; i--)
+            {
+                if (now - records[i].lastTick > limit)
+                {
+                    records.RemoveAt(i);
+                    removed++;
+                }
+            }
+            return removed;
         }
 
         /// <summary>工作台：一次配方完成（产物按品质折价）。</summary>
@@ -157,7 +184,7 @@ namespace DshEconomy
             base.ExposeData();
             if (Scribe.mode == LoadSaveMode.Saving)
             {
-                keys.Clear(); runs.Clear(); inputs.Clear(); outputs.Clear(); labors.Clear();
+                keys.Clear(); runs.Clear(); inputs.Clear(); outputs.Clear(); labors.Clear(); stamps.Clear();
                 for (int i = 0; i < records.Count; i++)
                 {
                     keys.Add(records[i].label);
@@ -165,6 +192,7 @@ namespace DshEconomy
                     inputs.Add(records[i].inputValue);
                     outputs.Add(records[i].outputValue);
                     labors.Add(records[i].laborDays);
+                    stamps.Add(records[i].lastTick);
                 }
             }
             Scribe_Collections.Look(ref keys, "dsh_billKeys2", LookMode.Value);
@@ -172,6 +200,7 @@ namespace DshEconomy
             Scribe_Collections.Look(ref inputs, "dsh_billInputs2", LookMode.Value);
             Scribe_Collections.Look(ref outputs, "dsh_billOutputs2", LookMode.Value);
             Scribe_Collections.Look(ref labors, "dsh_billLabors2", LookMode.Value);
+            Scribe_Collections.Look(ref stamps, "dsh_billStamps2", LookMode.Value);
             if (Scribe.mode == LoadSaveMode.LoadingVars || Scribe.mode == LoadSaveMode.PostLoadInit)
             {
                 if (keys == null) keys = new List<string>();
@@ -179,6 +208,7 @@ namespace DshEconomy
                 if (inputs == null) inputs = new List<float>();
                 if (outputs == null) outputs = new List<float>();
                 if (labors == null) labors = new List<float>();
+                if (stamps == null) stamps = new List<int>();
                 records = new List<BillRecord>();
                 for (int i = 0; i < keys.Count; i++)
                 {
@@ -188,7 +218,8 @@ namespace DshEconomy
                         runs = i < runs.Count ? runs[i] : 0,
                         inputValue = i < inputs.Count ? inputs[i] : 0f,
                         outputValue = i < outputs.Count ? outputs[i] : 0f,
-                        laborDays = i < labors.Count ? labors[i] : 0f
+                        laborDays = i < labors.Count ? labors[i] : 0f,
+                        lastTick = i < stamps.Count ? stamps[i] : 0
                     });
                 }
             }

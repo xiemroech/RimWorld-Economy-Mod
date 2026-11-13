@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -71,7 +71,9 @@ namespace DshEconomy
         // 衣服耐久低于这个比例就自动转成公有（0 = 关闭）
         public float apparelPublicizeAt = 0.25f;
         /// <summary>购买记录保留天数；0 = 永久。</summary>
-        public float purchaseLogDays = 2f;        public List<string> shortageOnlyCats = new List<string>();
+        public float purchaseLogDays = 2f;
+        /// <summary>工单账本保留天数；0 = 永久。</summary>
+        public float billLedgerDays = 7f;        public List<string> shortageOnlyCats = new List<string>();
         // 随身零钱上限 = 低价消费品均价 × 这个倍数（0 = 不限制，工钱都留在身上）
         public float pocketMultiplier = 10f;
         public List<string> shortageOnlyDefs = new List<string>();
@@ -135,6 +137,7 @@ namespace DshEconomy
             Scribe_Values.Look(ref shortageVanillaOnly, "dsh_shortageVanillaOnly", false);
             Scribe_Values.Look(ref apparelPublicizeAt, "dsh_apparelPublicizeAt", 0.25f);
             Scribe_Values.Look(ref purchaseLogDays, "dsh_purchaseLogDays", 2f);
+            Scribe_Values.Look(ref billLedgerDays, "dsh_billLedgerDays", 7f);
             Scribe_Values.Look(ref pocketMultiplier, "dsh_pocketMultiplier", 10f);
             Scribe_Collections.Look(ref shortageOnlyCats, "dsh_shortageOnlyCats", LookMode.Value);
             if (shortageOnlyCats == null) shortageOnlyCats = new List<string>();
@@ -504,6 +507,28 @@ namespace DshEconomy
             }
             Widgets.Label(new Rect(view.x + 532f, y + 4f, 900f, 24f),
                 "超过这个天数的记录会自动清掉（0 = 永久保留）。");
+            y += 32f;
+
+            // 工单账本保留天数
+            Widgets.Label(new Rect(view.x, y + 4f, 240f, 24f), "工单账本保留");
+            if (Widgets.ButtonText(new Rect(view.x + 244f, y, 34f, 26f), "-"))
+            {
+                Settings.billLedgerDays = Mathf.Max(0f, Settings.billLedgerDays - 1f);
+            }
+            Widgets.Label(new Rect(view.x + 282f, y + 4f, 80f, 24f),
+                Settings.billLedgerDays <= 0f ? "永久" : Settings.billLedgerDays.ToString("0") + " 天");
+            if (Widgets.ButtonText(new Rect(view.x + 362f, y, 34f, 26f), "+"))
+            {
+                Settings.billLedgerDays = Mathf.Min(60f, Settings.billLedgerDays + 1f);
+            }
+            if (Widgets.ButtonText(new Rect(view.x + 404f, y, 120f, 26f), "清空账本"))
+            {
+                Map mm = Find.CurrentMap;
+                EconomyBillLedger lg = mm != null ? mm.GetComponent<EconomyBillLedger>() : null;
+                if (lg != null) lg.ClearAll();
+            }
+            Widgets.Label(new Rect(view.x + 532f, y + 4f, 900f, 24f),
+                "超过这个天数没有新记账的条目会自动清掉（0 = 永久保留）。");
             y += 32f;
 
             // 随身零钱上限
