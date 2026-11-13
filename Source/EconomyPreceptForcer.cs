@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using RimWorld;
@@ -148,6 +148,17 @@ namespace DshEconomy
                     if (!reqList.Contains(meme)) reqList.Add(meme);
                     if (assocList != null && !assocList.Contains(meme)) assocList.Add(meme);
                     DevLog.Msg("[DOCTRINE] 公有制 ← 模因 " + meme.defName);
+                }
+
+                // 额外适配的模因（例如鼠鼠地下「同甘共苦」）：一样挂进规定戒律
+                string[] extra = EconomyDoctrine.ExtraPublicMemes;
+                for (int i = 0; i < extra.Length; i++)
+                {
+                    MemeDef meme = DefDatabase<MemeDef>.GetNamedSilentFail(extra[i]);
+                    if (meme == null) continue;
+                    if (!reqList.Contains(meme)) reqList.Add(meme);
+                    if (assocList != null && !assocList.Contains(meme)) assocList.Add(meme);
+                    DevLog.Msg("[DOCTRINE] 公有制 ← 额外模因 " + meme.defName);
                 }
 
                 // 无扩展文化时，赤胆忠心也算公有制

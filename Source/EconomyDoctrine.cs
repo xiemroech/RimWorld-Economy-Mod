@@ -21,12 +21,23 @@ namespace DshEconomy
         /// <summary>会强制公有制的文化模因（collectivist = 集体主义；loyalist = 和睦团体）。</summary>
         public static readonly string[] PublicMemes = { "OA_RK_meme_Friendly", "RK_AlienSolidarity", "VME_HardcoreIndustrialism" };
 
+        /// <summary>
+        /// 额外算公有制的模因：只参与"判定 + 把公有制挂到它的规定戒律里"，
+        /// 不参与 ExpansionCultureLoaded（否则会把「赤胆忠心」那条旧锁提前解掉，老存档公有制会突然变私有制）。
+        /// RKU_SharedBurdens = 鼠鼠地下（Ratkin Underground+）的「同甘共苦」。
+        /// </summary>
+        public static readonly string[] ExtraPublicMemes = { "RKU_SharedBurdens" };
+
         /// <summary>原版「赤胆忠心」：只有在没有文化扩展 mod 时才算公有制。</summary>
         public const string LoyalistMeme = "Loyalist";
 
         public static bool ExpansionCultureLoaded()
         {
             foreach (string n in PublicMemes)
+                if (DefDatabase<MemeDef>.GetNamedSilentFail(n) != null) return true;
+            // 额外适配的模因（鼠鼠地下「同甘共苦」）也算"装了文化扩展"：
+            // 有它在，原版「赤胆忠心」就不再被当成公有制。
+            foreach (string n in ExtraPublicMemes)
                 if (DefDatabase<MemeDef>.GetNamedSilentFail(n) != null) return true;
             return false;
         }
@@ -36,6 +47,8 @@ namespace DshEconomy
             if (m == null) return false;
             for (int i = 0; i < PublicMemes.Length; i++)
                 if (m.defName == PublicMemes[i]) return true;
+            for (int i = 0; i < ExtraPublicMemes.Length; i++)
+                if (m.defName == ExtraPublicMemes[i]) return true;
             if (!ExpansionCultureLoaded() && m.defName == LoyalistMeme) return true;
             return false;
         }
