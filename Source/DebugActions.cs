@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using LudeonTK;
@@ -702,6 +702,30 @@ namespace DshEconomy
             DevLog.Msg("[DSH经济] 动乱运行状态已清空");
         }
 
+        /// <summary>把类型里"找原料/能不能开工"相关的方法签名打进日志（用于直接调用原版判定）。</summary>
+        private static void DumpBillMethods(System.Type t, string label)
+        {
+            Log.Message("[MINE] ---- " + label + " 候选方法 ----");
+            foreach (System.Reflection.MethodInfo mi in t.GetMethods(
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+            {
+                string n = mi.Name;
+                if (n.IndexOf("Ingredient", System.StringComparison.Ordinal) < 0
+                    && n.IndexOf("DoNow", System.StringComparison.Ordinal) < 0) continue;
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                sb.Append("[MINE] ").Append(label).Append('.').Append(n).Append('(');
+                System.Reflection.ParameterInfo[] ps = mi.GetParameters();
+                for (int i = 0; i < ps.Length; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    sb.Append(ps[i].ParameterType.ToString()).Append(' ').Append(ps[i].Name);
+                }
+                sb.Append(") 返回=").Append(mi.ReturnType.Name);
+                Log.Message(sb.ToString());
+            }
+        }
+
         /// <summary>劳动体检：打印"记账这一层到底有没有跑"，用来判断工资为 0 是不是工时没记进来。</summary>
         [DebugAction("DSH经济", "劳动体检", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         public static void DumpLabor()
@@ -760,12 +784,24 @@ namespace DshEconomy
                     all.Add(def);
                     string wt = def.workType != null ? def.workType.defName : "无";
                     Log.Message("[MINE] 候选 DoBill：" + def.defName + " 工作类型=" + wt);
-                    if (doBill == null && (def.defName == "DoBill" || wt == "Crafting")) doBill = def.Worker as WorkGiver_DoBill;
+                    if (doBill == null && def.defName == "DoBill") doBill = def.Worker as WorkGiver_DoBill;
                 }
                 if (doBill == null && all.Count > 0) doBill = all[0].Worker as WorkGiver_DoBill;
             }
             catch { }
             Log.Message("[MINE] 实际用来测的 DoBill=" + (doBill == null ? "没找到" : doBill.def.defName));
+
+            // 把原版"能不能开工"这条链上的方法签名打出来，
+            // 好让我们直接调用真正的原版判定，而不是自己猜。
+            try
+            {
+                DumpBillMethods(typeof(Bill), "Bill");
+                DumpBillMethods(typeof(WorkGiver_DoBill), "WorkGiver_DoBill");
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[MINE] 方法转储失败：" + e.Message);
+            }
 
             int found = 0;
             foreach (Building b in map.listerBuildings.allBuildingsColonist)
@@ -832,12 +868,21 @@ namespace DshEconomy
                         }
                         catch (System.Exception e) { job = "异常:" + e.GetType().Name; }
                     }
+                    // 我们自己的拼单路线（原版找料 + 原版 DoBill 任务）
+                    string mineJob = "?";
+                    try
+                    {
+                        Job mj = null; // 自建派活器已删除，改走原版 WorkGiver_DoBill
+                        mineJob = mj == null ? ("空（" + "-" + "）") : mj.def.defName;
+                    }
+                    catch (System.Exception e) { mineJob = "异常:" + e.GetType().Name; }
                     Log.Message("[MINE]   " + p.LabelShort
                         + " 格可站=" + standable
                         + " 路1=" + reach1 + " 路2=" + reach2 + " 路3=" + reach3
                         + " 采矿工作=" + mineOk
                         + " 制作工作=" + craftOk
                         + " DoBill=" + job
+                        + " 我们的拼单=" + mineJob
                         + " 当前=" + (p.CurJobDef == null ? "无" : p.CurJobDef.defName));
                 }
             }

@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Defs>
-  <JobDef>
-    <defName>DshEco_SilverWork</defName>
-    <driverClass>DshEconomy.JobDriver_SilverWork</driverClass>
-    <reportString>正在开采/精炼。</reportString>
-  </JobDef>
-</Defs>

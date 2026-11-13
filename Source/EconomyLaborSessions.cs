@@ -300,7 +300,6 @@ namespace DshEconomy
             EconomyLaborSessions.ExposeData();
             EconomyWorkTypes.ExposeData();
             EconomyPurchaseLog.ExposeData();
-            JobDriver_SilverWork.ExposeData();
         }
     }
 }

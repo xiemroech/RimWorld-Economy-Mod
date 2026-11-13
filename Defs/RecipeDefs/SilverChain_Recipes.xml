@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Defs>
 
-  <!-- 矿井：10 木材 -> 1 未制成银 -->
+  <!-- 矿场：10 木材 -> 5 未制成银 -->
   <RecipeDef>
     <defName>DshEco_MineRawSilver</defName>
     <label>开采未制成银</label>
@@ -9,6 +9,7 @@
     <jobString>正在开采未制成银。</jobString>
     <workSpeedStat>GeneralLaborSpeed</workSpeedStat>
     <workAmount>6000</workAmount>
+    <unfinishedThingDef>DshEco_UnfinishedSilver</unfinishedThingDef>
     <ingredients>
       <li>
         <filter>
@@ -33,7 +34,7 @@
     <workSkill>Mining</workSkill>
   </RecipeDef>
 
-  <!-- 矿井 4 倍版：40 木材 -> 4 未制成银 -->
+  <!-- 矿场 4 倍版：40 木材 -> 20 未制成银 -->
   <RecipeDef>
     <defName>DshEco_MineRawSilver_x4</defName>
     <label>开采未制成银 x4</label>
@@ -41,6 +42,7 @@
     <jobString>正在批量开采未制成银。</jobString>
     <workSpeedStat>GeneralLaborSpeed</workSpeedStat>
     <workAmount>24000</workAmount>
+    <unfinishedThingDef>DshEco_UnfinishedSilver</unfinishedThingDef>
     <ingredients>
       <li>
         <filter>
@@ -65,7 +67,7 @@
     <workSkill>Mining</workSkill>
   </RecipeDef>
 
-  <!-- 银加工台：5 未制成银 -> 3 白银（40% 损耗） -->
+  <!-- 银加工台：5 未制成银 -> 3 白银 -->
   <RecipeDef>
     <defName>DshEco_RefineSilver</defName>
     <label>精炼白银</label>
@@ -73,6 +75,7 @@
     <jobString>正在精炼白银。</jobString>
     <workSpeedStat>GeneralLaborSpeed</workSpeedStat>
     <workAmount>4800</workAmount>
+    <unfinishedThingDef>DshEco_UnfinishedSilver</unfinishedThingDef>
     <ingredients>
       <li>
         <filter>

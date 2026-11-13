@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Defs>
 
   <!-- 未制成银：不可交易、占仓储与运力 -->
@@ -21,6 +21,8 @@
       <li>ResourcesRaw</li>
     </thingCategories>
   </ThingDef>
+
+
 
   <!-- 银矿场：不烧燃料，木材作为配方原料；只能铺在石头地面上，露天效率高于屋内 -->
   <ThingDef ParentName="BenchBase">
@@ -119,6 +121,21 @@
     </modExtensions>
     <building>
     </building>
+  </ThingDef>
+
+<!-- 未制成银（半成品）：原版 UnfinishedThing 机制用它记进度，中断后掉在地上，捡回来接着干 -->
+  <ThingDef ParentName="UnfinishedBase">
+    <defName>DshEco_UnfinishedSilver</defName>
+    <label>未制成银（半成品）</label>
+    <description>开采或精炼到一半的银子。把它带回工作台就能接着做。</description>
+    <graphicData>
+      <texPath>Things/Item/Resource/DshEco_RawSilver</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+    </graphicData>
+    <statBases>
+      <Flammability>0.5</Flammability>
+    </statBases>
+    <stuffCategories Inherit="false" />
   </ThingDef>
 
 </Defs>

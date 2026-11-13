@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- 名字必须保持 DshEco_MineSilverBill / DshEco_RefineSilverBill（单数）：
+       老存档里每个殖民者的工作设置引用了这两个名字，改名或删除都会报
+       "Could not load reference to WorkGiverDef"，然后整个工作类型列表错乱、谁都干不了活。
+       这里只把 giverClass 换成原版 WorkGiver_DoBill，工作类型与名单不变。 -->
+  <WorkGiverDef>
+    <defName>DshEco_MineSilverBill</defName>
+    <label>在银矿场开采</label>
+    <giverClass>WorkGiver_DoBill</giverClass>
+    <workType>Mining</workType>
+    <priorityInType>80</priorityInType>
+    <fixedBillGiverDefs>
+      <li>DshEco_SilverMine</li>
+    </fixedBillGiverDefs>
+    <verb>在银矿场开采</verb>
+    <gerund>正在银矿场开采</gerund>
+    <requiredCapacities>
+      <li>Manipulation</li>
+    </requiredCapacities>
+    <prioritizeSustains>true</prioritizeSustains>
+  </WorkGiverDef>
+
+  <WorkGiverDef>
+    <defName>DshEco_RefineSilverBill</defName>
+    <label>在银加工台精炼</label>
+    <giverClass>WorkGiver_DoBill</giverClass>
+    <workType>Crafting</workType>
+    <priorityInType>115</priorityInType>
+    <fixedBillGiverDefs>
+      <li>DshEco_SilverBench</li>
+    </fixedBillGiverDefs>
+    <verb>在银加工台精炼</verb>
+    <gerund>正在银加工台精炼</gerund>
+    <requiredCapacities>
+      <li>Manipulation</li>
+    </requiredCapacities>
+    <prioritizeSustains>true</prioritizeSustains>
+  </WorkGiverDef>
+
+</Defs>
