@@ -173,34 +173,42 @@ namespace DshEconomy
                     }
                 }
 
-                // 关键：文化浮动窗的「规定戒律」读的是 **MemeDef.requiredPrecepts**，
-                // 不是 PreceptDef 那边的反向名单。只做上面那一步，界面里永远不会出现公有制。
-                System.Reflection.FieldInfo memeReq = typeof(MemeDef).GetField("requiredPrecepts",
-                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                if (memeReq == null)
+                // 最后：直接往模因说明里补一行。
+                // 原版工具提示「规定戒律」读的是它自己内部那套名单，用反射硬塞 PreceptDef 侧
+                // 的 requiredMemes/associatedMemes 并不会显示出来（实测没反应），
+                // 所以这里用最稳的办法：把"规定戒律：公有制"写进 description。
+                AppendMemeNote(reqList, "公有制");
+                string[] extra3 = EconomyDoctrine.ExtraPublicMemes;
+                for (int i = 0; i < extra3.Length; i++)
                 {
-                    Log.Warning("[DSH-ECONOMY] 未找到 MemeDef.requiredPrecepts，模因说明里不会显示公有制");
+                    MemeDef meme = DefDatabase<MemeDef>.GetNamedSilentFail(extra3[i]);
+                    if (meme != null) AppendMemeNote(new List<MemeDef> { meme }, "公有制");
                 }
-                else
+                if (!EconomyDoctrine.ExpansionCultureLoaded())
                 {
-                    AddMemePrecept(memeReq, reqList, pub);
-                    string[] extra2 = EconomyDoctrine.ExtraPublicMemes;
-                    for (int i = 0; i < extra2.Length; i++)
-                    {
-                        MemeDef meme = DefDatabase<MemeDef>.GetNamedSilentFail(extra2[i]);
-                        if (meme == null) continue;
-                        AddMemePrecept(memeReq, new List<MemeDef> { meme }, pub);
-                    }
-                    if (!EconomyDoctrine.ExpansionCultureLoaded())
-                    {
-                        MemeDef loyal = DefDatabase<MemeDef>.GetNamedSilentFail(EconomyDoctrine.LoyalistMeme);
-                        if (loyal != null) AddMemePrecept(memeReq, new List<MemeDef> { loyal }, pub);
-                    }
+                    MemeDef loyal = DefDatabase<MemeDef>.GetNamedSilentFail(EconomyDoctrine.LoyalistMeme);
+                    if (loyal != null) AppendMemeNote(new List<MemeDef> { loyal }, "公有制");
                 }
             }
             catch (Exception e)
             {
                 Log.Warning("[DSH-ECONOMY] 注入模因必需戒律失败：" + e.Message);
+            }
+        }
+
+        /// <summary>在模因说明末尾补一行「规定戒律：…」，本模组用；已补过就不再重复。</summary>
+        private static void AppendMemeNote(List<MemeDef> memes, string preceptLabel)
+        {
+            if (memes == null) return;
+            string note = "规定戒律：" + preceptLabel;
+            for (int i = 0; i < memes.Count; i++)
+            {
+                MemeDef meme = memes[i];
+                if (meme == null) continue;
+                string desc = meme.description ?? "";
+                if (desc.Contains(note)) continue;
+                meme.description = desc.Length == 0 ? note : desc + "\n\n" + note;
+                DevLog.Msg("[DOCTRINE] 模因说明已标注 " + meme.defName + " → " + note);
             }
         }
 

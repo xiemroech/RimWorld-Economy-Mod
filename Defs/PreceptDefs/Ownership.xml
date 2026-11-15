@@ -20,7 +20,7 @@
     <defName>DshEco_PreceptPublicOwnership</defName>
     <issue>DshEco_Ownership</issue>
     <label>公有制</label>
-    <description>财产归集体所有。社会化可在 0%-100% 之间自由调整，税收只能是比例税或累进税。</description>
+    <description>财产归集体所有。社会化可在 0% 到 100% 之间自由调整，税收只能是比例税或累进税。</description>
     <impact>High</impact>
     <preceptClass>Precept</preceptClass>
   </PreceptDef>

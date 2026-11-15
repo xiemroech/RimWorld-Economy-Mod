@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
@@ -529,6 +529,8 @@ namespace DshEconomy
             try
             {
                 bool ok = PrivateUseBlock.Patch(harmony);
+                try { PrivateUseBlock.PatchAmmoPickup(harmony); }
+                catch (Exception e3) { Log.Warning("[DSH-ECONOMY] 弹药拾取拦截 补丁失败：" + e3.Message); }
                 try { ApparelFilter.Patch(harmony); }
                 catch (Exception e2) { Log.Warning("[DSH-ECONOMY] 装备筛选器 补丁失败：" + e2.Message); }
                 return ok;

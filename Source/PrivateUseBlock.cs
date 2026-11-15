@@ -1,7 +1,8 @@
-﻿using System.Reflection;
+using System.Reflection;
 using HarmonyLib;
 using RimWorld;
 using Verse;
+using Verse.AI;
 
 namespace DshEconomy
 {
@@ -38,6 +39,76 @@ namespace DshEconomy
             else Log.Warning("[DSH-ECONOMY] 没找到 Pawn_EquipmentTracker.AddEquipment");
 
             return ok;
+        }
+
+        /// <summary>
+        /// 非自己私有的弹药不许捡：以前小人去给枪装弹，把公共弹药拾进背包，
+        /// 回收逻辑又把它当公共物品丢下，任务失败再重来，无限循环。
+        /// 这里直接拦在"开始任务"这一步，让他根本不去捡。
+        /// </summary>
+        public static bool PatchAmmoPickup(Harmony harmony)
+        {
+            MethodInfo start = AccessTools.Method(typeof(Pawn_JobTracker), "StartJob",
+                new[]
+                {
+                    typeof(Job), typeof(JobCondition), typeof(ThinkNode), typeof(bool), typeof(bool),
+                    typeof(ThinkTreeDef), typeof(JobTag?), typeof(bool), typeof(bool),
+                    typeof(bool?), typeof(bool), typeof(bool), typeof(bool)
+                });
+            if (start == null) start = AccessTools.Method(typeof(Pawn_JobTracker), "StartJob");
+            if (start == null)
+            {
+                Log.Warning("[DSH-ECONOMY] 弹药拾取拦截：找不到 Pawn_JobTracker.StartJob");
+                return false;
+            }
+            harmony.Patch(start, prefix: new HarmonyMethod(
+                typeof(PrivateUseBlock).GetMethod(nameof(StartJobPrefix), BindingFlags.Static | BindingFlags.NonPublic)));
+            DevLog.Msg("[DSH-ECONOMY] 非私有弹药不许捡：已挂载");
+            return true;
+        }
+
+        private static bool StartJobPrefix(Pawn_JobTracker __instance, Job newJob)
+        {
+            if (newJob == null || __instance == null) return true;
+            if (newJob.def != JobDefOf.TakeInventory) return true;
+            Thing t = newJob.targetA.Thing;
+            if (t == null || t.Destroyed) return true;
+
+            Pawn p = __instance.pawn;
+            if (p == null) return true;
+            // 玩家亲自下令（右键"优先搬运/拾取"之类）一律放行：
+            // 这是玩家在做私有发放，不该被 AI 规则挡住。
+            if (newJob.playerForced) return true;
+
+            Pawn owner = EconomyPrivate.OwnerOf(t);
+            if (owner == p) return true;   // 自己的私有物，随便拿
+
+            // 公共物品：只有"正在走购买流程"的人才许拿（拿了会在结算时打上私有标签）。
+            // 否则任何人都不该把公共物品揣进背包——不然会被回收逻辑丢下，
+            // 任务失败、重来，无限循环。
+            if (owner == null && EconomyMarket.HasPending(p)) return true;
+
+            DevLog.Msg("[USE] " + p.LabelShort + " 想拿走非私有物品（" + t.LabelShort + "，物主 "
+                + (owner != null ? owner.LabelShort : "公共") + "），已拒绝");
+            return false;
+        }
+
+        /// <summary>弹药类判定：defName 或分类名里带 Ammo / Bullet（CE、鼠族枪械等）。</summary>
+        private static bool IsAmmoLike(ThingDef d)
+        {
+            if (d == null) return false;
+            if (d.defName.IndexOf("Ammo", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (d.defName.IndexOf("Bullet", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (d.thingCategories != null)
+            {
+                for (int i = 0; i < d.thingCategories.Count; i++)
+                {
+                    ThingCategoryDef c = d.thingCategories[i];
+                    if (c != null && c.defName.IndexOf("Ammo", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+            return false;
         }
 
         private static bool ApparelPrefix(Pawn_ApparelTracker __instance, Thing newApparel)
