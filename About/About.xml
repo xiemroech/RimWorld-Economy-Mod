@@ -1,10 +1,16 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <ModMetaData>
   <name>内部经济重制：国家与革命</name>
   <author>xiemore</author>
   <packageId>xiemore.internal.economy</packageId>
-  <modVersion>1.3.2</modVersion>
-  <description>【v1.3.2 更新】满意度大改：公有制的上限终于高于私有制
+  <modVersion>1.3.3</modVersion>
+  <description>【v1.3.3 更新】吃饱穿暖之外，还得让人玩得开心、睡得够、心情不崩
+· 新增：娱乐低于 25% 直接扣工作满意度，最低 −20（越低扣得越多）
+· 新增：睡眠低于 40% 直接扣工作满意度，最低 −20
+· 新增：心情低于 50% 直接扣工作满意度，最低 −45（0% 心情直接吃满）
+· 修复：闲逛 / 发呆（GotoWander、Wait_Wander 以及 mod 自造的 xxxWander/xxxIdle）不再算进劳动时间
+· 劳动效率：娱乐不足与睡眠不足各自独立衰减，而且**相乘叠加**——
+  两项都低就是双倍扣（睡眠 20% + 娱乐 10% → 生理合计 ×0.49）；工具提示会写出这一项【v1.3.2 更新】满意度大改：公有制的上限终于高于私有制
 · 新增对外路线判定（先看你自己意识形态的财产制度戒律，再按对方派系阵营算）
   - 信公有制：与公有制派系平均好感 ≥0 → 最高 +4（不到 2 点「联合起来」，2 点以上「无产者没有祖国」）；
     为负 → 「社会帝国主义？」最多 −6。

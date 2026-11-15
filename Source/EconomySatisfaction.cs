@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
@@ -35,6 +35,14 @@ namespace DshEconomy
 
         // 休息低于这个比例才开始掉效率
         public const float RestDecayThreshold = 0.4f;
+
+        // 娱乐低于这个比例才开始掉效率（和休息共用一个效率槽位，取更差的）
+        public const float RecDecayThreshold = 0.25f;
+
+        // 情绪与生理直接压满意度的门槛（见 Evaluate 的 ⑤b）
+        public const float RecPenaltyThreshold = 0.25f;   // 娱乐 < 25% 开始扣，最低 −20
+        public const float RestPenaltyThreshold = 0.4f;   // 睡眠 < 40% 开始扣，最低 −20
+        public const float MoodPenaltyThreshold = 0.5f;   // 心情 < 50% 开始扣，最低 −45
 
         // 掉到阈值以下后：休息每低 1 个点乘 exp(-2.0 × 差值)；工时只做很小的追加惩罚
         public const float HoursMinorWeight = 0.05f;
@@ -592,6 +600,44 @@ namespace DshEconomy
                 {
                     Add(entries, "娱乐满足（娱乐 > 80%）", 2f);
                     total += 2f;
+                }
+            }
+
+            // ⑤b 生理与情绪的反向：这三个直接压工作满意度，别再用"工时"背锅
+            //   娱乐 < 25% → 最多 −20；休息 < 40% → 最多 −20；心情 < 50% → 最多 −45。
+            if (p.needs != null)
+            {
+                if (p.needs.joy != null)
+                {
+                    float joy = Mathf.Clamp01(p.needs.joy.CurLevelPercentage);
+                    if (joy < RecPenaltyThreshold)
+                    {
+                        float pen = -20f * (1f - joy / RecPenaltyThreshold);
+                        Add(entries, "娱乐匮乏（娱乐 " + (joy * 100f).ToString("0") + "%）", pen);
+                        total += pen;
+                    }
+                }
+
+                if (p.needs.rest != null)
+                {
+                    float restNow = Mathf.Clamp01(p.needs.rest.CurLevelPercentage);
+                    if (restNow < RestPenaltyThreshold)
+                    {
+                        float pen = -20f * (1f - restNow / RestPenaltyThreshold);
+                        Add(entries, "疲惫不堪（睡眠 " + (restNow * 100f).ToString("0") + "%）", pen);
+                        total += pen;
+                    }
+                }
+
+                if (p.needs.mood != null)
+                {
+                    float moodNow = Mathf.Clamp01(p.needs.mood.CurLevelPercentage);
+                    if (moodNow < MoodPenaltyThreshold)
+                    {
+                        float pen = -45f * (1f - moodNow / MoodPenaltyThreshold);
+                        Add(entries, "心情低落（心情 " + (moodNow * 100f).ToString("0") + "%）", pen);
+                        total += pen;
+                    }
                 }
             }
 
@@ -1191,7 +1237,29 @@ namespace DshEconomy
         }
 
         /// <summary>
-        /// 工作效率总计 = 满意度 × 休息/疲劳 × 奖金排名加成。
+        /// 娱乐不足的效率衰减：娱乐 ≥ 25% → ×1.00；跌破后 f = exp(-2.0 × (25% - 娱乐))。
+        /// 和 RestFactor **共用同一个效率乘数槽位**（取更差的那个），不叠加。
+        /// </summary>
+        public static float RecreationFactor(Pawn p)
+        {
+            if (p == null || p.needs == null || p.needs.joy == null) return 1f;
+            float j = Mathf.Clamp01(p.needs.joy.CurLevel);
+            if (j >= RecDecayThreshold) return 1f;
+            float depth = RecDecayThreshold - j;
+            float f = Mathf.Exp(-RestDepthDecay * depth);
+            return Mathf.Clamp(f, FatigueMinFactor, 1f);
+        }
+
+        /// <summary>
+        /// 休息与娱乐合并后的效率乘数：**两项分别相乘，会叠加**（用户要的就是双倍扣）。
+        /// </summary>
+        public static float RestOrJoyFactor(Pawn p)
+        {
+            return RestFactor(p) * RecreationFactor(p);
+        }
+
+        /// <summary>
+        /// 工作效率总计 = 满意度 × 休息/娱乐（取更差）× 健康 × 奖金排名加成。
         /// 这是这个人最终落到 WorkSpeedGlobal 上的乘数。
         /// </summary>
         public static float TotalEfficiency(Pawn p)
@@ -1201,7 +1269,7 @@ namespace DshEconomy
             Map map = p.MapHeld ?? p.Map;
             MapEconomyComponent comp = map != null ? map.GetComponent<MapEconomyComponent>() : null;
             if (comp != null) bonus += comp.GetBonusSpeed(p);
-            return WorkSpeedFactor(p) * RestFactor(p) * HealthFactor(p) * bonus;
+            return WorkSpeedFactor(p) * RestOrJoyFactor(p) * HealthFactor(p) * bonus;
         }
 
         /// <summary>工作效率总计的一句话拆解，给提示和界面用。</summary>
@@ -1210,13 +1278,17 @@ namespace DshEconomy
             if (p == null) return "";
             float sat = WorkSpeedFactor(p);
             float rest = RestFactor(p);
+            float joy = RecreationFactor(p);
+            float penalty = rest * joy;
             float bonus = 1f;
             Map map = p.MapHeld ?? p.Map;
             MapEconomyComponent comp = map != null ? map.GetComponent<MapEconomyComponent>() : null;
             if (comp != null) bonus += comp.GetBonusSpeed(p);
-            return "工作效率总计 ×" + (sat * rest * bonus).ToString("0.00")
+            return "工作效率总计 ×" + (sat * penalty * bonus).ToString("0.00")
                 + "（满意度 ×" + sat.ToString("0.00")
                 + " · 休息 ×" + rest.ToString("0.00")
+                + " · 娱乐 ×" + joy.ToString("0.00")
+                + " · 生理合计 ×" + penalty.ToString("0.00")
                 + " · 奖金排名 ×" + bonus.ToString("0.00") + "）";
         }
 
@@ -1275,6 +1347,15 @@ namespace DshEconomy
                     + " → 劳动效率 ×" + rest.ToString("0.00") + "（跌到 "
                     + (RestDecayThreshold * 100f).ToString("0") + "% 以下开始指数衰减，"
                     + "工时只做很小的追加，睡饱即恢复）");
+            }
+            float joyF = RecreationFactor(p);
+            if (joyF < 0.999f)
+            {
+                sb.AppendLine("娱乐: " + (p.needs != null && p.needs.joy != null
+                        ? (p.needs.joy.CurLevel * 100f).ToString("0") + "%" : "-")
+                    + " → 劳动效率 ×" + joyF.ToString("0.00") + "（跌到 "
+                    + (RecDecayThreshold * 100f).ToString("0") + "% 以下开始指数衰减；"
+                    + "这一项和休息的效率乘数是相乘的，两项都低就双倍扣）");
             }
             sb.AppendLine(EfficiencyLine(p));
             sb.Append("危险线: ≤" + DshEconomy.EconomyUnrest.StrikeThreshold.ToString("0") + " 罢工 / ≤"

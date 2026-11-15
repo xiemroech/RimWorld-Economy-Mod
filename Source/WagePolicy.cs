@@ -324,7 +324,18 @@ namespace DshEconomy
             JobDef def = job.def;
             if (def.joyKind != null) return false;
             if (def == JobDefOf.LayDown || def == JobDefOf.Goto || def == JobDefOf.Wait
-                || def == JobDefOf.Wait_Wander || def == JobDefOf.Wait_MaintainPosture || def == JobDefOf.Ingest)
+                || def == JobDefOf.Wait_Wander || def == JobDefOf.Wait_MaintainPosture || def == JobDefOf.Ingest
+                || def == JobDefOf.Wait_Downed)
+            {
+                return false;
+            }
+
+            // 闲逛 / 发呆：原版 JobGiver_Idle 派的是 GotoWander 与 Wait_Wander，
+            // 很多 mod 也会自造 xxxWander / xxxIdle 的"没事走走"任务——这些都不是劳动。
+            string dn = def.defName;
+            if (dn.IndexOf("Wander", System.StringComparison.Ordinal) >= 0
+                || dn.IndexOf("Idle", System.StringComparison.Ordinal) >= 0
+                || dn == "StandAndBeStill")
             {
                 return false;
             }
