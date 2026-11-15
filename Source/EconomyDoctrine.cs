@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -26,7 +26,13 @@ namespace DshEconomy
         /// 不参与 ExpansionCultureLoaded（否则会把「赤胆忠心」那条旧锁提前解掉，老存档公有制会突然变私有制）。
         /// RKU_SharedBurdens = 鼠鼠地下（Ratkin Underground+）的「同甘共苦」。
         /// </summary>
-        public static readonly string[] ExtraPublicMemes = { "RKU_SharedBurdens" };
+        public static readonly string[] ExtraPublicMemes =
+        {
+            "RKU_SharedBurdens",          // 鼠鼠地下「同甘共苦」
+            "TY_RevolutionIdeo",          // 革命理想
+            "TY_ShiBYongBBJingBu",        // 实用远视
+            "TY_JianKuZuoJue",            // 艰苦卓绝
+        };
 
         /// <summary>原版「赤胆忠心」：只有在没有文化扩展 mod 时才算公有制。</summary>
         public const string LoyalistMeme = "Loyalist";

@@ -172,10 +172,55 @@ namespace DshEconomy
                         DevLog.Msg("[DOCTRINE] 公有制 ← 模因 Loyalist");
                     }
                 }
+
+                // 关键：文化浮动窗的「规定戒律」读的是 **MemeDef.requiredPrecepts**，
+                // 不是 PreceptDef 那边的反向名单。只做上面那一步，界面里永远不会出现公有制。
+                System.Reflection.FieldInfo memeReq = typeof(MemeDef).GetField("requiredPrecepts",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                if (memeReq == null)
+                {
+                    Log.Warning("[DSH-ECONOMY] 未找到 MemeDef.requiredPrecepts，模因说明里不会显示公有制");
+                }
+                else
+                {
+                    AddMemePrecept(memeReq, reqList, pub);
+                    string[] extra2 = EconomyDoctrine.ExtraPublicMemes;
+                    for (int i = 0; i < extra2.Length; i++)
+                    {
+                        MemeDef meme = DefDatabase<MemeDef>.GetNamedSilentFail(extra2[i]);
+                        if (meme == null) continue;
+                        AddMemePrecept(memeReq, new List<MemeDef> { meme }, pub);
+                    }
+                    if (!EconomyDoctrine.ExpansionCultureLoaded())
+                    {
+                        MemeDef loyal = DefDatabase<MemeDef>.GetNamedSilentFail(EconomyDoctrine.LoyalistMeme);
+                        if (loyal != null) AddMemePrecept(memeReq, new List<MemeDef> { loyal }, pub);
+                    }
+                }
             }
             catch (Exception e)
             {
                 Log.Warning("[DSH-ECONOMY] 注入模因必需戒律失败：" + e.Message);
+            }
+        }
+
+        /// <summary>把公有制戒律塞进这些模因的 requiredPrecepts（文化浮动窗据此显示「规定戒律」）。</summary>
+        private static void AddMemePrecept(System.Reflection.FieldInfo field, List<MemeDef> memes, PreceptDef precept)
+        {
+            if (field == null || memes == null || precept == null) return;
+            for (int i = 0; i < memes.Count; i++)
+            {
+                MemeDef meme = memes[i];
+                if (meme == null) continue;
+                List<PreceptDef> list = field.GetValue(meme) as List<PreceptDef>;
+                if (list == null)
+                {
+                    list = new List<PreceptDef>();
+                    field.SetValue(meme, list);
+                }
+                if (list.Contains(precept)) continue;
+                list.Add(precept);
+                DevLog.Msg("[DOCTRINE] 模因 " + meme.defName + " → 规定戒律 公有制");
             }
         }
 
