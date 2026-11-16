@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
@@ -95,7 +95,9 @@ namespace DshEconomy
             HookMarketHaulBoost(harmony);
             try { BedRestOverride.Apply(harmony); }
             catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 卧床判定独占失败：" + e.Message); }
-            try { NewColonistGear.Apply(harmony); }
+            try { UiScalePatch.Apply(harmony); }
+        catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 窗口尺寸适配失败：" + e.Message); }
+        try { NewColonistGear.Apply(harmony); }
             catch (System.Exception e) { Log.Warning("[DSH-ECONOMY] 新人装备私有化失败：" + e.Message); }
             MethodInfo target = AccessTools.Method(typeof(ThingOwner<Thing>), "TryAdd", new[] { typeof(Thing), typeof(bool) });
             if (target == null)
