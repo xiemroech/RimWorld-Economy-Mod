@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -409,7 +409,11 @@ namespace DshEconomy
             bool rollNow = fast || nowTicks - lastUnrestRoll >= GenDate.TicksPerHour;
             if (rollNow) lastUnrestRoll = nowTicks;
 
-            for (int i = 0; rollNow && i < colonists.Count; i++)
+            // 三人及以下的小队伍不搞革命：人太少，一罢工/暴动就直接崩盘，
+            // 玩家也没得调度。满意度再低也不触发（已存在的状态不受影响）。
+            bool tooSmall = colonists.Count <= 3;
+
+            for (int i = 0; !tooSmall && rollNow && i < colonists.Count; i++)
             {
                 Pawn p = colonists[i];
                 if (p == null || p.Dead || p.Downed) continue;
@@ -795,6 +799,7 @@ namespace DshEconomy
 
             // 高传染也留一半非革命者，不然全员革命后没有目标，只会闲逛
             int total = map != null && map.mapPawns != null ? map.mapPawns.FreeColonists.Count : 0;
+            if (total <= 3) return;   // 三人及以下的小队伍不传播动乱
             if (fast && total > 0 && unrest.Count >= Mathf.Max(1, total / 2)) return;
 
             int cap = Mathf.Max(1, total / 2);
