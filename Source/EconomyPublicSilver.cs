@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using Verse;
 using UnityEngine;
@@ -252,6 +252,13 @@ namespace DshEconomy
         private static bool DropAtFeet(Pawn p, Thing thing)
         {
             if (p.MapHeld == null || !p.Spawned || thing == null) return false;
+
+            // 已经不在这个小人身上（多半是上一步 TrySendToStorage 已经丢到地上了）：
+            // 再丢一次就会让原版 ThingOwner 报 "tried to drop ... which it didn't contain"。
+            bool inBag = thing.ParentHolder is Pawn_InventoryTracker inv && inv == p.inventory;
+            bool inHands = p.carryTracker != null && p.carryTracker.CarriedThing == thing;
+            if (!inBag && !inHands) return true;
+
             IntVec3 pos = p.PositionHeld;
             Map map = p.MapHeld;
 

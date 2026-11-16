@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
@@ -23,10 +24,20 @@ namespace DshEconomy
             public Thing stock;        // 当初要拿的那一堆
             public int retries;        // 重派过几次
             public int lastTryTick;    // 上次重派的时间
+            public bool queued;        // 是否已排进队尾（等手头活干完）
+            public int queuedTick;     // 排队的时间
         }
 
         private static readonly Dictionary<Pawn, Pending> pending = new Dictionary<Pawn, Pending>();
         private static readonly List<Pawn> staleScratch = new List<Pawn>();
+
+        /// <summary>放弃一单之后的冷却（这个人这段时间内不再自动下单）。</summary>
+        private static readonly Dictionary<Pawn, int> cooldown = new Dictionary<Pawn, int>();
+
+        /// <summary>放弃后的冷却时长：1 游戏小时（2500 tick）。</summary>
+        public const int PurchaseCooldown = 18000;   // 5 分钟（冷却期不再自动下单）
+        public const int ForceTimeoutTicks = 900;    // 抢占后 15 秒没进展就撤单
+        public const int QueueTimeoutTicks = 2500;   // 排队等太久（1 游戏小时）就放弃这单
 
         /// <summary>上次执行"私有堆兜底合并"的 tick。</summary>
         private static int lastMergeTick = -99999;
@@ -40,6 +51,7 @@ namespace DshEconomy
         {
             pending.Clear();
             staleScratch.Clear();
+            cooldown.Clear();
         }
 
         // ---------------- 选货 ----------------
@@ -129,6 +141,8 @@ namespace DshEconomy
             if (EconomyConsumption.IsImplantLike(stock.def)
                 && !EconomyImplantDemand.Wanted(p, stock.def)) return false;
             if (HasPending(p)) return false;
+            // 刚放弃过一单：冷却期内不再自动下单，避免"下单→被顶掉→再下单"的罚站循环
+            if (!force && cooldown.TryGetValue(p, out int cdUntil) && Find.TickManager.TicksGame < cdUntil) return false;
             if (p.jobs == null || p.Dead || p.Downed || p.InMentalState) return false;
             if (!p.CanReserveAndReach(stock, PathEndMode.ClosestTouch, Danger.Some)) return false;
 
@@ -364,9 +378,63 @@ namespace DshEconomy
                 // 任务还在跑 → 什么都不做
                 if (p.CurJobDef == JobDefOf.TakeInventory) continue;
 
-                // 任务被顶掉了 → 重派，但有冷却和次数上限
+                // 任务被顶掉了：
+                // 只有"这个人真的缺"（饿着，或者身上/仓库里没有私有食物）才允许抢占工作；
+                // 抢占后 15 秒还没进展就撤销这张单，并冷却 5 分钟，避免"接单→立刻结束→再插"的死循环。
                 if (now - rec.lastTryTick < 60) continue;
-                if (rec.retries >= 5) { staleScratch.Add(p); continue; }
+
+                if (rec.retries >= 1)
+                {
+                    if (now - rec.lastTryTick < ForceTimeoutTicks) continue;   // 再等等，可能只是路上被耽搁
+                    staleScratch.Add(p);
+                    cooldown[p] = now + PurchaseCooldown;
+                    continue;
+                }
+
+                // 只有"食物单 + 真的缺"才值得打断手头的活；其他物品一律排队。
+                bool hungry = p.needs != null && p.needs.food != null && p.needs.food.CurLevelPercentage < 0.35f;
+                bool lacksFood = !EconomyConsumption.HasPrivateFood(p, p.MapHeld);
+                bool urgent = rec.def != null && rec.def.IsIngestible && (hungry || lacksFood);
+                if (!urgent)
+                {
+                    // 已经排过一次就别重复排
+                    if (rec.queued)
+                    {
+                        if (now - rec.queuedTick > QueueTimeoutTicks)   // 排太久还没轮到 → 放弃
+                        {
+                            staleScratch.Add(p);
+                            cooldown[p] = now + PurchaseCooldown;
+                        }
+                        continue;
+                    }
+                    if (rec.stock == null || rec.stock.Destroyed || !rec.stock.Spawned || rec.stock.stackCount <= 0)
+                    {
+                        staleScratch.Add(p);
+                        continue;
+                    }
+                    if (p.jobs == null || p.jobs.jobQueue == null)
+                    {
+                        staleScratch.Add(p);
+                        continue;
+                    }
+                    Job queued = JobMaker.MakeJob(JobDefOf.TakeInventory, rec.stock);
+                    queued.count = Mathf.Clamp(rec.count, 1, rec.stock.stackCount);
+                    queued.haulMode = HaulMode.ToCellStorage;
+                    try
+                    {
+                        p.jobs.jobQueue.EnqueueFirst(queued);
+                        rec.queued = true;
+                        rec.queuedTick = now;
+                        DevLog.Msg("[DSH-ECONOMY] 排队购买：" + p.LabelShort + " → " + rec.def.defName + "×" + queued.count);
+                    }
+                    catch (Exception e)
+                    {
+                        DevLog.Msg("[DSH-ECONOMY] 排队失败：" + e.Message);
+                        staleScratch.Add(p);
+                    }
+                    continue;
+                }
+
                 if (rec.stock == null || rec.stock.Destroyed || !rec.stock.Spawned || rec.stock.stackCount <= 0)
                 {
                     staleScratch.Add(p);

@@ -18,6 +18,8 @@ namespace DshEconomy
         /// <summary>我们构造好的银锭图形，ThingDef.graphic 的 getter 补丁会直接返回它。</summary>
         public static Graphic Cached;
 
+        private static bool deferred;
+
         /// <summary>贴图没加载成功的判定（null / 无材质 / BadTexture）。</summary>
         private static bool IsBad(Graphic g)
         {
@@ -33,6 +35,19 @@ namespace DshEconomy
 
         public static void Apply()
         {
+            // 启动阶段（静态构造里）贴图还没装载，这时候去 Get 只会刷
+            // "Collection cannot init: No textures found at path ..." 这条红字。
+            // 推到进入游戏之后再执行。
+            if (Current.ProgramState != ProgramState.Playing)
+            {
+                if (!deferred)
+                {
+                    deferred = true;
+                    LongEventHandler.ExecuteWhenFinished(() => { deferred = false; Apply(); });
+                }
+                return;
+            }
+
             ThingDef silver = ThingDefOf.Silver;
             if (silver == null || silver.graphicData == null) return;
 

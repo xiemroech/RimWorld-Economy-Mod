@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -697,6 +697,30 @@ namespace DshEconomy
                     "罢工=停工；暴动/革命=进入狂暴（会攻击、破坏），革命传染最强");
                 y += 30f;
             }
+
+            // 永久卸载：这里不放在开发者模式里——玩家随时可以卸掉本 mod
+            // 永久卸载：把本 mod 写进存档的东西清干净，之后取消勾选才安全
+                Widgets.Label(new Rect(view.x, y + 5f, 250f, 24f), "永久卸载（清存档后禁用）：");
+                if (Widgets.ButtonText(new Rect(view.x + 254f, y, 190f, 26f), "从本存档彻底卸载"))
+                {
+                    Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
+                        "会删掉本 mod 写在存档里的东西：\n"
+                        + "· 所有物品上的私有归属标记\n"
+                        + "· 每个小人的「工作满意度」需求\n"
+                        + "· 我们加的建筑（摊位 / 银矿 / 银台）\n"
+                        + "· 意识形态里的财产制度戒律\n"
+                        + "· 我们的账本、房产、存款等数据\n\n"
+                        + "做完请立刻保存，然后再取消勾选本 mod。\n"
+                        + "不可撤销，建议先另存一份存档。",
+                        () =>
+                        {
+                            string r = SafeUnload.Run();
+                            Find.WindowStack.Add(new Dialog_MessageBox(r));
+                        }, true));
+                }
+                Widgets.Label(new Rect(view.x + 452f, y + 5f, 400f, 24f),
+                    "卸载后存档里不再有任何指向本 mod 的定义");
+                y += 32f;
         
             Widgets.EndScrollView();
         }

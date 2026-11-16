@@ -76,20 +76,24 @@ namespace DshEconomy
 
             Pawn p = __instance.pawn;
             if (p == null) return true;
-            // 玩家亲自下令（右键"优先搬运/拾取"之类）一律放行：
-            // 这是玩家在做私有发放，不该被 AI 规则挡住。
+            // 玩家亲自下令（右键"优先搬运/拾取"）一律放行：这是玩家在做私有发放。
             if (newJob.playerForced) return true;
 
             Pawn owner = EconomyPrivate.OwnerOf(t);
             if (owner == p) return true;   // 自己的私有物，随便拿
 
-            // 公共物品：只有"正在走购买流程"的人才许拿（拿了会在结算时打上私有标签）。
-            // 否则任何人都不该把公共物品揣进背包——不然会被回收逻辑丢下，
-            // 任务失败、重来，无限循环。
-            if (owner == null && EconomyMarket.HasPending(p)) return true;
+            // 别人的私有物：一律不许 AI 捡（捡了会被回收逻辑丢下，反复循环）
+            if (owner != null)
+            {
+                DevLog.Msg("[USE] " + p.LabelShort + " 想拿走 " + owner.LabelShort + " 的 " + t.LabelShort + "，已拒绝");
+                return false;
+            }
 
-            DevLog.Msg("[USE] " + p.LabelShort + " 想拿走非私有物品（" + t.LabelShort + "，物主 "
-                + (owner != null ? owner.LabelShort : "公共") + "），已拒绝");
+            // 公共物品：只拦"武器/弹药"这类会触发装弹-丢下死循环的，
+            // 其余（材料、食物、药品）放行，否则正常搬运/干活会被一起搞死。
+            if (!IsAmmoLike(t.def) && !t.def.IsWeapon) return true;
+            if (EconomyMarket.HasPending(p)) return true;   // 正在走购买流程
+            DevLog.Msg("[USE] " + p.LabelShort + " 想拿走公共的 " + t.LabelShort + "，已拒绝");
             return false;
         }
 
